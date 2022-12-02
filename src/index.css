@@ -1,0 +1,68 @@
+@font-face {
+  font-family: Gotham;
+  src: url(./font/Gotham-Font/GothamMedium.ttf);
+}
+
+* {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Gotham";
+  
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+
+  color: rgb(47, 47, 47)
+
+  
+}
+a{
+  text-decoration: none;
+  background-color: transparent;
+}
+.heading {
+  font-family: 'Gotham';
+  font-style: normal;
+  font-weight: 500;
+  font-size: 64px;
+  line-height: 106%;
+  letter-spacing: 0.04em;
+  cursor: default;
+
+
+}
+.subheading {
+font-family: 'Gotham';
+font-style: normal;
+font-weight: 500;
+font-size: 14px;
+line-height: 106%;
+letter-spacing: 0.04em;
+
+color: #6D9886;
+}
+
+.link {
+  font-family: 'Gotham';
+  font-style: normal;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 106%;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  cursor:pointer;
+  
+  color: #353434;
+  }
+
+  .link:hover{
+    color: #7b7b7b;
+  }
+  p{
+    background-color: transparent !important;
+  }
+ .pic{
+  background: url(./images/giphy.gif);
+  background-repeat: repeat;
+  background-size: 100% 100%;
+  border-radius: 20;
+ }
