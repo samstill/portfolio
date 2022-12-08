@@ -40,7 +40,7 @@ function Home() {
             
             </Grid>
 {/* large screen card  */}
-            <Hidden Grid item mdDown>
+            <Hidden item mdDown>
 
                 <Grid item paddingTop={5} display="flex" justifyContent="center">
                     <Card className="slit-in-vertical" sx={{borderRadius: 10, backgroundColor:"#f1fff9" }}>
@@ -88,7 +88,7 @@ function Home() {
         </Grid>
 
 {/* Small screen card */}
-            <Hidden Grid item mdUp>
+            <Hidden item mdUp>
                 <Grid className="fade-in-top" item paddingTop={3} display="flex" justifyContent="center">
                     <Card sx={{minWidth: 310 , minHeight:50, borderRadius: 10, display:"flex", justifyContent:"space-between", alignItems:"center", backgroundColor:"#f1fff9" }} >
                         <CardContent style={{backgroundColor:"transparent"}}>
