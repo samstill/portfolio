@@ -1,0 +1,127 @@
+.home-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100%;
+  position: relative;
+}
+
+h1 { 
+  color: black;
+  font-size: 2.5rem;
+  margin: 0;
+}
+
+/* Remove hover effect for h1 */
+.content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: left;
+  z-index: 1;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.icon-container {
+  cursor: pointer;
+  color: black;
+  transition: 0.3s;
+  display: flex;
+  align-items: center;
+}
+
+.icon-container:hover {
+  transform: scale(1.2); /* Slightly enlarge the icon on hover */
+}
+
+.description {
+  color: black;
+  text-align: left;
+  font-size: 1rem;
+  padding: 0 1rem;
+  margin-top: 1rem; /* Adjust the distance between title and subtitle */
+}
+
+/* Keyframes for animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInBottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Apply animations */
+.fade-in {
+  animation: fadeIn 1s ease-in-out;
+}
+
+.slide-in-left {
+  animation: slideInLeft 1s ease-in-out;
+}
+
+.slide-in-right {
+  animation: slideInRight 1s ease-in-out;
+}
+
+.slide-in-bottom {
+  animation: slideInBottom 1s ease-in-out;
+}
+
+@media (max-width: 600px) {
+  .content {
+    width: 90%;
+    padding: 0 1rem;
+  }
+  
+  .header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  h1 {
+    font-size: 2rem;
+  }
+}

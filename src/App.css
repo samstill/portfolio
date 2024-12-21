@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Gotham:wght@400;700&display=swap');
+
+/* Remove margins and padding */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Prevent scrollbars */
+  font-family: 'Gotham', sans-serif;
+}
+
+/* Canvas styling */
+canvas {
+  display: block; /* Prevents unwanted whitespace */
+}
+
+/* Animation keyframes */
