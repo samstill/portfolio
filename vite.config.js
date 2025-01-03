@@ -10,4 +10,11 @@ export default defineConfig({
       '@': path.resolve(__dirname, './'),
     },
   },
+  base: '/portfolio/', // replace 'portfolio' with your repository name
+  define: {
+    global: 'globalThis',
+    'process.env': '{}',
+    'process.browser': true,
+    'process.version': '"v16.14.0"'
+  }
 })
