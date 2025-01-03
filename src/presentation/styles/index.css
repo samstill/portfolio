@@ -1,0 +1,15 @@
+/* ...existing styles... */
+
+/* Theme transition utilities */
+.theme-transition {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 200ms;
+  transition-timing-function: ease-in-out;
+}
+
+/* Dark mode overrides */
+.dark .theme-icon {
+  color: white;
+}
+
+/* ...existing styles... */

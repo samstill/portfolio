@@ -1,0 +1,28 @@
+/* Inter Font Import */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --font-primary: 'Inter', sans-serif;
+}
+
+/* Reset and base styles */
+* {
+    font-family: var(--font-primary);
+}
+
+body {
+    font-family: var(--font-primary);
+}
+
+/* Typography scale */
+h1, h2, h3, h4, h5, h6,
+.text-heading {
+    font-family: var(--font-primary);
+    font-weight: 700;
+}
+
+p, span, a, div,
+.text-body {
+    font-family: var(--font-primary);
+    font-weight: 400;
+}
