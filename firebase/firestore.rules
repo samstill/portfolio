@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users collection rules - Essential for auth
+    match /users/{userId} {
+      // Allow reading own profile and admin can read all
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || isAdmin()
+      );
+      // Allow creating own profile
+      allow create: if isAuthenticated() && 
+        request.auth.uid == userId;
+      // Allow updating own profile or admin can update any
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId || isAdmin()
+      );
+      // Only admin can delete users
+      allow delete: if isAdmin();
+    }
+
+    // Events collection rules
+    match /events/{eventId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      
+      // Simplified update rule
+      allow update: if isAuthenticated();
+    }
+
+    // Tickets collection rules
+    match /tickets/{ticketId} {
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Transactions collection rules
+    match /transactions/{transactionId} {
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || isAdmin()
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // Failed transactions collection rules
+    match /failed_transactions/{transactionId} {
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || isAdmin()
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // Settings collection rules
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // AI settings collection rules
+    match /settings/ai {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Messages collection rules
+    match /messages/{messageId} {
+      allow create: if true;  // Allow anonymous messages
+      allow read: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // User profiles collection rules
+    match /profiles/{profileId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+        request.auth.uid == profileId;
+      allow update: if isAuthenticated() && (
+        request.auth.uid == profileId || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Default catch-all rule
+    match /{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

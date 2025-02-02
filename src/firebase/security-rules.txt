@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /messages/{messageId} {
+      // Anyone can create anonymous messages
+      allow create: if true;
+      
+      // Only admin users can read messages
+      allow read: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+      
+      // Only admin users can update messages (for marking as read)
+      allow update: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin" &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      
+      // No one can delete messages
+      allow delete: if false;
+    }
+  }
+}

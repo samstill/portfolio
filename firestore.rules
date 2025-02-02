@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Events collection rules
+    match /events/{eventId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      
+      // Allow ticket booking updates
+      allow update: if isAuthenticated() && (
+        isAdmin() || (
+          // Only check the fields being updated
+          request.resource.data.availableTickets >= 0 &&
+          request.resource.data.soldTickets >= 0 &&
+          // Ensure other fields remain unchanged
+          request.resource.data.title == resource.data.title &&
+          request.resource.data.description == resource.data.description &&
+          request.resource.data.date == resource.data.date &&
+          request.resource.data.location == resource.data.location &&
+          request.resource.data.price == resource.data.price &&
+          request.resource.data.totalTickets == resource.data.totalTickets
+        )
+      );
+    }
+
+    // Tickets collection rules - Simplified
+    match /tickets/{ticketId} {
+      allow create: if isAuthenticated();  // Any authenticated user can create tickets
+      allow read: if isAuthenticated();    // Any authenticated user can read tickets
+      allow update, delete: if isAdmin();  // Only admin can modify or delete tickets
+    }
+
+    // Transactions collection rules - Simplified
+    match /transactions/{transactionId} {
+      allow create: if isAuthenticated();  // Any authenticated user can create transactions
+      allow read: if isAuthenticated();    // Any authenticated user can read transactions
+      allow update, delete: if isAdmin();  // Only admin can modify or delete transactions
+    }
+
+    // Failed transactions collection rules - Simplified
+    match /failed_transactions/{transactionId} {
+      allow create: if isAuthenticated();  // Any authenticated user can create failed transactions
+      allow read: if isAuthenticated();    // Any authenticated user can read failed transactions
+      allow update, delete: if isAdmin();  // Only admin can modify or delete failed transactions
+    }
+
+    // Users collection rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Messages collection rules
+    match /messages/{messageId} {
+      allow create: if true;
+      allow read: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // Settings collection rules
+    match /settings/ai {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Catch-all rule for other collections
+    match /{collection}/{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+} 
