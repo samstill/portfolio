@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiLogOut, FiUser, FiHome, FiPlusCircle, FiMessageSquare, FiSettings, FiBookmark } from 'react-icons/fi';
+import { FiLogOut, FiUser, FiHome, FiPlusCircle, FiMessageSquare, FiSettings, FiBookmark, FiCalendar } from 'react-icons/fi';
 import { useAuth } from '../../shared/context/AuthContext';
 import { auth } from '../../firebase';
 import { messageService } from '../../firebase/services/messageService';
@@ -11,6 +11,8 @@ import { useEvents } from '../hooks/useEvents';
 import { EventCard } from '../components/events/EventCard';
 import { EventsNavbar } from '../components/events/EventsNavbar';
 import { LoadingCard } from '../components/common/LoadingCard';
+import NotificationBadge from '../components/NotificationBadge';
+import { Skeleton } from '../components/Skeleton';
 import {
   Container,
   EventsGrid,
@@ -43,13 +45,212 @@ const TicketBadge = styled.span<{ $available: number }>`
   color: ${props => props.$available > 0 ? '#4ade80' : '#ef4444'};
 `;
 
+const IconWrapper = styled.div`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+`;
+
+const NoResults = styled(motion.div)`
+  text-align: center;
+  padding: 40px;
+  color: ${props => props.theme.textSecondary};
+  font-size: 1.1rem;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+
+  svg {
+    margin-bottom: 15px;
+    opacity: 0.7;
+  }
+
+  @media (max-width: 768px) {
+    padding: 30px;
+    font-size: 1rem;
+  }
+`;
+
+const EventCardSkeleton = () => (
+  <motion.div
+    style={{
+      background: 'rgba(255, 255, 255, 0.05)',
+      borderRadius: '15px',
+      padding: '25px',
+      border: '1px solid rgba(255, 255, 255, 0.1)',
+      height: '100%'
+    }}
+  >
+    <Skeleton height="24px" width="70%" marginbottom="15px" borderradius="4px" />
+    <Skeleton height="16px" width="40%" marginbottom="20px" borderradius="4px" />
+    <Skeleton height="100px" width="100%" marginbottom="15px" borderradius="4px" />
+    <Skeleton height="16px" width="60%" marginbottom="10px" borderradius="4px" />
+    <Skeleton height="16px" width="50%" marginbottom="20px" borderradius="4px" />
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Skeleton height="32px" width="100px" borderradius="16px" />
+      <Skeleton height="32px" width="80px" borderradius="16px" />
+    </div>
+  </motion.div>
+);
+
+interface FilterState {
+  searchTerm: string;
+  dateRange: { start: Date | null; end: Date | null };
+  priceRange: { min: number | null; max: number | null };
+  sortOrder: string;
+}
+
 const EventsScreen: React.FC = () => {
   const { currentUser, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const { events, loading, error, setFilters, setSort, deleteEvent } = useEvents();
+  const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
+  const [filterState, setFilterState] = useState<FilterState>({
+    searchTerm: '',
+    dateRange: { start: null, end: null },
+    priceRange: { min: null, max: null },
+    sortOrder: 'date-desc'
+  });
 
+  // Filter events based on all criteria
+  const filterEvents = useCallback((filters: FilterState, eventsList: Event[]) => {
+    if (!eventsList.length) return [];
+    
+    let filtered = [...eventsList];
+
+    try {
+      // Text search filter
+      if (filters.searchTerm) {
+        const searchLower = filters.searchTerm.toLowerCase().trim();
+        filtered = filtered.filter(event => 
+          event.title.toLowerCase().includes(searchLower) ||
+          event.description.toLowerCase().includes(searchLower) ||
+          event.location.toLowerCase().includes(searchLower)
+        );
+      }
+
+      // Date range filter
+      if (filters.dateRange?.start || filters.dateRange?.end) {
+        filtered = filtered.filter(event => {
+          try {
+            const eventDate = new Date(event.date);
+            if (!eventDate.getTime()) return false; // Invalid date
+
+            if (filters.dateRange?.start) {
+              const startDate = new Date(filters.dateRange.start);
+              startDate.setHours(0, 0, 0, 0);
+              if (eventDate < startDate) return false;
+            }
+
+            if (filters.dateRange?.end) {
+              const endDate = new Date(filters.dateRange.end);
+              endDate.setHours(23, 59, 59, 999);
+              if (eventDate > endDate) return false;
+            }
+
+            return true;
+          } catch (error) {
+            console.error('Error filtering by date:', error);
+            return false; // Exclude events with invalid dates
+          }
+        });
+      }
+
+      // Price range filter
+      if (filters.priceRange?.min !== null || filters.priceRange?.max !== null) {
+        filtered = filtered.filter(event => {
+          try {
+            const price = parseFloat(event.price.toString());
+            if (isNaN(price)) return false; // Invalid price
+
+            if (filters.priceRange?.min !== null) {
+              const minPrice = parseFloat(filters.priceRange.min.toString());
+              if (!isNaN(minPrice) && price < minPrice) return false;
+            }
+
+            if (filters.priceRange?.max !== null) {
+              const maxPrice = parseFloat(filters.priceRange.max.toString());
+              if (!isNaN(maxPrice) && price > maxPrice) return false;
+            }
+
+            return true;
+          } catch (error) {
+            console.error('Error filtering by price:', error);
+            return false; // Exclude events with invalid prices
+          }
+        });
+      }
+
+      // Apply sorting
+      if (filters.sortOrder) {
+        filtered.sort((a, b) => {
+          try {
+            switch (filters.sortOrder) {
+              case 'date-asc':
+                return new Date(a.date).getTime() - new Date(b.date).getTime();
+              case 'date-desc':
+                return new Date(b.date).getTime() - new Date(a.date).getTime();
+              case 'price-asc':
+                return parseFloat(a.price.toString()) - parseFloat(b.price.toString());
+              case 'price-desc':
+                return parseFloat(b.price.toString()) - parseFloat(a.price.toString());
+              default:
+                return 0;
+            }
+          } catch (error) {
+            console.error('Error sorting events:', error);
+            return 0;
+          }
+        });
+      }
+
+      return filtered;
+    } catch (error) {
+      console.error('Error in filterEvents:', error);
+      return []; // Return empty array in case of error to prevent showing unfiltered events
+    }
+  }, []); // No dependencies needed as it's a pure function
+
+  // Handle filter changes
+  const handleFilterChange = useCallback((newFilters: Partial<FilterState>) => {
+    setFilterState(prev => {
+      const updatedFilters = { ...prev, ...newFilters };
+      return updatedFilters;
+    });
+  }, []);
+
+  // Handle sort changes
+  const handleSortChange = useCallback((sortOrder: string) => {
+    handleFilterChange({ sortOrder });
+  }, [handleFilterChange]);
+
+  // Fetch events
+  useEffect(() => {
+    const fetchEvents = async () => {
+      setLoading(true);
+      try {
+        const eventsData = await eventService.getEvents();
+        setEvents(eventsData);
+        // Apply initial sorting
+        const initialFiltered = filterEvents(filterState, eventsData);
+        setFilteredEvents(initialFiltered);
+      } catch (error) {
+        console.error('Error fetching events:', error);
+        toast.error('Failed to load events');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvents();
+  }, [filterEvents, filterState]);
+
+  // Fetch unread messages for admin
   useEffect(() => {
     if (isAdmin) {
       const fetchUnreadCount = async () => {
@@ -88,14 +289,23 @@ const EventsScreen: React.FC = () => {
     navigate(`/events/${id}/book`);
   };
 
+  // Apply filters whenever events or filterState changes
+  useEffect(() => {
+    if (!loading) {
+      const filtered = filterEvents(filterState, events);
+      setFilteredEvents(filtered);
+    }
+  }, [events, filterState, filterEvents, loading]);
+
   return (
     <Container>
       <Toaster position="top-right" />
       <EventsNavbar unreadMessages={unreadMessages} />
 
       <EventsFilter
-        onFilterChange={setFilters}
-        onSortChange={setSort}
+        filters={filterState}
+        onFilterChange={handleFilterChange}
+        onSortChange={handleSortChange}
       />
 
       <AnimatePresence>
@@ -120,13 +330,17 @@ const EventsScreen: React.FC = () => {
                     Create Event
                   </IconButton>
                   <IconButton onClick={() => navigate('/messages')}>
-                    <FiMessageSquare size={18} />
+                    <IconWrapper>
+                      <FiMessageSquare size={18} />
+                      {unreadMessages > 0 && (
+                        <NotificationBadge 
+                          count={unreadMessages}
+                          size="small"
+                          variant="primary"
+                        />
+                      )}
+                    </IconWrapper>
                     Messages
-                    {unreadMessages > 0 && (
-                      <span className="badge">
-                        {unreadMessages > 99 ? '99+' : unreadMessages}
-                      </span>
-                    )}
                   </IconButton>
                   <IconButton onClick={() => navigate('/admin')}>
                     <FiSettings size={18} />
@@ -151,31 +365,42 @@ const EventsScreen: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <EventsGrid>
+      <AnimatePresence mode="wait">
         {loading ? (
-          Array.from({ length: 6 }).map((_, index) => (
-            <LoadingCard key={index} />
-          ))
-        ) : events.length > 0 ? (
-          events.map(event => (
-            <EventCard
-              key={event.id}
-              event={event}
-              isAdmin={isAdmin}
-              onDelete={handleDeleteEvent}
-              onBook={handleBookEvent}
-              ticketInfo={
-                <TicketBadge $available={event.availableTickets || 0}>
-                  <FiBookmark size={14} />
-                  {event.availableTickets || 0} available
-                </TicketBadge>
-              }
-            />
-          ))
+          <EventsGrid>
+            {[...Array(6)].map((_, index) => (
+              <EventCardSkeleton key={index} />
+            ))}
+          </EventsGrid>
+        ) : filteredEvents.length === 0 ? (
+          <NoResults
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <FiCalendar size={40} />
+            <p>No events found</p>
+          </NoResults>
         ) : (
-          <div>No events found</div>
+          <EventsGrid>
+            {filteredEvents.map(event => (
+              <EventCard
+                key={event.id}
+                event={event}
+                isAdmin={isAdmin}
+                onDelete={handleDeleteEvent}
+                onBook={handleBookEvent}
+                ticketInfo={
+                  <TicketBadge $available={event.availableTickets || 0}>
+                    <FiBookmark size={14} />
+                    {event.availableTickets || 0} available
+                  </TicketBadge>
+                }
+              />
+            ))}
+          </EventsGrid>
         )}
-      </EventsGrid>
+      </AnimatePresence>
     </Container>
   );
 };

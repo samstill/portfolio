@@ -1,59 +1,32 @@
-import styled from 'styled-components';
-import { motion } from 'framer-motion';
+import styled, { keyframes } from 'styled-components';
 
-interface SkeletonProps {
-  $height?: string;
-  $width?: string;
-  $borderRadius?: string;
-  $marginTop?: string;
-  $marginBottom?: string;
-  style?: React.CSSProperties;
-}
-
-const SkeletonBase = styled(motion.div)<SkeletonProps>`
-  background: linear-gradient(
-    90deg,
-    ${props => props.theme.skeleton.start} 25%,
-    ${props => props.theme.skeleton.middle} 37%,
-    ${props => props.theme.skeleton.end} 63%
-  );
-  background-size: 400% 100%;
-  animation: skeleton-loading 1.4s ease infinite;
-  height: ${props => props.$height || '20px'};
-  width: ${props => props.$width || '100%'};
-  border-radius: ${props => props.$borderRadius || '4px'};
-  margin-top: ${props => props.$marginTop || '0'};
-  margin-bottom: ${props => props.$marginBottom || '0'};
-
-  @keyframes skeleton-loading {
-    0% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0 50%;
-    }
+const shimmer = keyframes`
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
   }
 `;
 
-export const Skeleton: React.FC<{
-  height?: string;
+interface SkeletonProps {
   width?: string;
-  borderRadius?: string;
-  marginTop?: string;
-  marginBottom?: string;
-  style?: React.CSSProperties;
-}> = ({ height, width, borderRadius, marginTop, marginBottom, style }) => {
-  return (
-    <SkeletonBase
-      $height={height}
-      $width={width}
-      $borderRadius={borderRadius}
-      $marginTop={marginTop}
-      $marginBottom={marginBottom}
-      style={style}
-      initial={{ opacity: 0.6 }}
-      animate={{ opacity: 1 }}
-      transition={{ repeat: Infinity, duration: 1, ease: 'easeInOut' }}
-    />
+  height?: string;
+  borderradius?: string;
+  marginbottom?: string;
+}
+
+export const Skeleton = styled.div<SkeletonProps>`
+  width: ${props => props.width || '100%'};
+  height: ${props => props.height || '20px'};
+  border-radius: ${props => props.borderradius || '4px'};
+  margin-bottom: ${props => props.marginbottom || '0'};
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.03) 63%
   );
-}; 
+  background-size: 200% 100%;
+  animation: ${shimmer} 1.5s infinite linear;
+`; 

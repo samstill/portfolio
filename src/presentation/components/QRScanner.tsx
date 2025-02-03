@@ -1,247 +1,324 @@
-import { useEffect, useState } from 'react';
-import styled from "styled-components";
+import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { IoFlashlight, IoCameraReverse } from 'react-icons/io5';
-
-const SCANNER_SIZE = 250;
-const BORDER_SIZE = SCANNER_SIZE - 40;
+import { FiCamera, FiLoader } from 'react-icons/fi';
 
 const ScannerContainer = styled(motion.div)`
-  width: ${SCANNER_SIZE}px;
-  height: ${SCANNER_SIZE}px;
-  background: ${props => props.theme.background};
-  border-radius: 20px;
-  overflow: hidden;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
   position: relative;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  margin: 20px auto;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
 
-  #reader {
-    width: ${SCANNER_SIZE}px !important;
-    height: ${SCANNER_SIZE}px !important;
-    position: relative;
-    overflow: hidden;
-    background: transparent !important;
-  }
-
-  video {
-    width: ${SCANNER_SIZE}px !important;
-    height: ${SCANNER_SIZE}px !important;
-    object-fit: cover !important;
-    border-radius: 20px !important;
+  @media (max-width: 768px) {
+    max-width: 100%;
+    border-radius: 12px;
   }
 `;
 
-const ScannerBorder = styled.div`
+const SwitchCameraButton = styled(motion.button)`
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: ${BORDER_SIZE}px;
-  height: ${BORDER_SIZE}px;
-  border: 2px solid #4a6cf7;
-  border-radius: 15px;
-  z-index: 10;
-  pointer-events: none;
-  animation: scan 2s ease-in-out infinite;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: -2px;
-    left: -2px;
-    right: -2px;
-    bottom: -2px;
-    border-radius: 15px;
-    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
-  }
-
-  @keyframes scan {
-    0% {
-      border-color: #4a6cf7;
-    }
-    50% {
-      border-color: #6e8efb;
-      transform: translate(-50%, -50%) scale(1.02);
-    }
-    100% {
-      border-color: #4a6cf7;
-    }
-  }
-`;
-
-const Controls = styled.div`
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 10px;
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(10px);
-  z-index: 20;
-`;
-
-const ControlButton = styled(motion.button)<{ $isActive?: boolean }>`
-  background: ${props => props.$isActive ? 'rgba(74, 108, 247, 0.5)' : 'rgba(255, 255, 255, 0.15)'};
+  bottom: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.2);
   border: none;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   cursor: pointer;
-  font-size: 0.9rem;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 
   &:hover {
-    background: ${props => props.$isActive ? 'rgba(74, 108, 247, 0.7)' : 'rgba(255, 255, 255, 0.25)'};
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  @media (max-width: 768px) {
+    bottom: 15px;
+    right: 15px;
+    width: 36px;
+    height: 36px;
+  }
+`;
+
+const ScannerOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10;
+`;
+
+const ScannerMessage = styled.div`
+  color: white;
+  text-align: center;
+  padding: 20px;
+  font-size: 1.1rem;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 8px;
+  max-width: 80%;
+  margin: 0 auto;
+
+  @media (max-width: 768px) {
+    font-size: 1rem;
+    padding: 15px;
+  }
+`;
+
+const ScannerElement = styled.div`
+  width: 100%;
+  min-height: 300px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: transparent;
+  position: relative;
+
+  @media (max-width: 768px) {
+    min-height: 250px;
   }
 `;
 
 interface QRScannerProps {
-  onResult: (result: string) => void;
+  onScan: (data: string | null) => void;
   onError?: (error: string) => void;
-  onClose: () => void;
 }
 
-const QRScanner: React.FC<QRScannerProps> = ({ onResult, onError, onClose }) => {
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanner, setScanner] = useState<Html5Qrcode | null>(null);
-  const [isFlashOn, setIsFlashOn] = useState(false);
-  const [currentCamera, setCurrentCamera] = useState<string>('');
-  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
+interface Camera {
+  id: string;
+  label: string;
+}
 
+const QRScanner: React.FC<QRScannerProps> = ({ onScan, onError }) => {
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const elementRef = useRef<HTMLDivElement>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
+  const scannerDivId = 'qr-scanner';
+
+  // First effect: Set mounted state
   useEffect(() => {
-    const initializeScanner = async () => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
+
+  // Second effect: Get available cameras
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const getCameras = async () => {
       try {
         const devices = await Html5Qrcode.getCameras();
-        setCameras(devices);
-        
-        if (devices.length > 0) {
-          const backCamera = devices.find(device => device.label.toLowerCase().includes('back')) || devices[0];
-          setCurrentCamera(backCamera.id);
-          
-          const html5QrCode = new Html5Qrcode("reader");
-          setScanner(html5QrCode);
-
-          await html5QrCode.start(
-            backCamera.id,
-            {
-              fps: 10,
-              qrbox: { width: BORDER_SIZE, height: BORDER_SIZE },
-              aspectRatio: 1,
-            },
-            (decodedText) => {
-              onResult(decodedText);
-              html5QrCode.stop().then(() => {
-                onClose();
-              }).catch(console.error);
-            },
-            (errorMessage) => {
-              if (onError) onError(errorMessage);
-            }
+        if (devices && devices.length > 0) {
+          console.log('Available cameras:', devices);
+          // Filter out virtual cameras
+          const realCameras = devices.filter(device => 
+            !device.label.toLowerCase().includes('virtual') &&
+            !device.label.toLowerCase().includes('obs')
           );
           
-          setIsScanning(true);
+          if (realCameras.length === 0) {
+            setCameraError('No physical cameras found on your device');
+            return;
+          }
+
+          setCameras(realCameras);
+          // Try to find back camera first
+          const backCameraIndex = realCameras.findIndex(device => 
+            device.label.toLowerCase().includes('back') || 
+            device.label.toLowerCase().includes('environment')
+          );
+          setCurrentCameraIndex(backCameraIndex !== -1 ? backCameraIndex : 0);
+        } else {
+          setCameraError('No cameras found on your device');
         }
       } catch (err) {
-        console.error('Error initializing scanner:', err);
-        if (onError) onError(String(err));
+        console.error('Error getting cameras:', err);
+        setCameraError('Unable to access camera. Please ensure you have granted camera permissions.');
+      } finally {
+        setIsInitializing(false);
       }
     };
 
-    initializeScanner();
+    getCameras();
+  }, [isMounted]);
+
+  // Third effect: Initialize scanner when cameras are ready
+  useEffect(() => {
+    if (!isMounted || !elementRef.current) return;
+
+    const initializeScanner = async () => {
+      try {
+        // Check if we have cameras and valid index
+        if (!cameras.length || currentCameraIndex >= cameras.length) {
+          throw new Error('No valid camera found');
+        }
+
+        // Get the selected camera
+        const camera = cameras[currentCameraIndex];
+        if (!camera?.id) {
+          throw new Error('Invalid camera ID');
+        }
+
+        // Stop existing scanner if any
+        if (scannerRef.current) {
+          await scannerRef.current.stop();
+          scannerRef.current = null;
+        }
+
+        // Create new scanner instance
+        const html5QrCode = new Html5Qrcode(scannerDivId);
+        scannerRef.current = html5QrCode;
+
+        console.log('Starting camera:', camera.label, camera.id);
+
+        // Start scanning
+        await html5QrCode.start(
+          camera.id,
+          {
+            fps: 10,
+            qrbox: {
+              width: 250,
+              height: 250
+            },
+            aspectRatio: window.innerWidth < 768 ? 1.0 : 1.33,
+            videoConstraints: {
+              deviceId: camera.id,
+              facingMode: "environment",
+              width: { min: 640, ideal: 1280, max: 1920 },
+              height: { min: 480, ideal: 720, max: 1080 }
+            }
+          },
+          (decodedText) => {
+            if (isMounted) {
+              onScan(decodedText);
+            }
+          },
+          (errorMessage) => {
+            if (!errorMessage.includes('No QR code found')) {
+              console.error('Scanner error:', errorMessage);
+              onError?.(errorMessage);
+            }
+          }
+        );
+
+        setCameraError(null);
+
+      } catch (error) {
+        console.error('Scanner initialization error:', error);
+        setCameraError(
+          'Unable to start camera. Please ensure you have granted camera permissions and try again.'
+        );
+      }
+    };
+
+    const timer = setTimeout(initializeScanner, 500);
 
     return () => {
-      if (scanner) {
-        scanner.stop().catch(console.error);
+      clearTimeout(timer);
+      if (scannerRef.current) {
+        scannerRef.current.stop()
+          .catch(error => console.error('Error stopping scanner:', error));
       }
     };
-  }, [onResult, onError, onClose]);
+  }, [cameras, currentCameraIndex, onScan, onError, isMounted]);
 
-  const toggleFlash = async () => {
-    if (!scanner) return;
-    
-    try {
-      if (isFlashOn) {
-        await scanner.turnOffFlash();
-      } else {
-        await scanner.turnOnFlash();
+  // Fourth effect: Apply styles
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      #${scannerDivId} {
+        width: 100%;
+        height: 100%;
       }
-      setIsFlashOn(!isFlashOn);
-    } catch (err) {
-      console.error('Error toggling flash:', err);
-    }
+      #${scannerDivId} video {
+        width: 100% !important;
+        height: auto !important;
+        min-height: 300px !important;
+        max-height: 80vh !important;
+        border-radius: 12px;
+        object-fit: cover;
+        background: #000;
+      }
+      @media (max-width: 768px) {
+        #${scannerDivId} video {
+          min-height: 250px !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, [isMounted]);
+
+  const handleSwitchCamera = async () => {
+    if (cameras.length <= 1) return;
+    const nextCameraIndex = (currentCameraIndex + 1) % cameras.length;
+    setCurrentCameraIndex(nextCameraIndex);
   };
 
-  const switchCamera = async () => {
-    if (!scanner || cameras.length < 2) return;
-    
-    try {
-      await scanner.stop();
-      
-      const currentIndex = cameras.findIndex(cam => cam.id === currentCamera);
-      const nextIndex = (currentIndex + 1) % cameras.length;
-      const nextCamera = cameras[nextIndex];
-      
-      await scanner.start(
-        nextCamera.id,
-        {
-          fps: 10,
-          qrbox: { width: BORDER_SIZE, height: BORDER_SIZE },
-          aspectRatio: 1,
-        },
-        (decodedText) => {
-          onResult(decodedText);
-          scanner.stop().then(() => {
-            onClose();
-          }).catch(console.error);
-        },
-        (errorMessage) => {
-          if (onError) onError(errorMessage);
-        }
-      );
-      
-      setCurrentCamera(nextCamera.id);
-      setIsFlashOn(false);
-    } catch (err) {
-      console.error('Error switching camera:', err);
-    }
-  };
+  if (isInitializing) {
+    return (
+      <ScannerContainer>
+        <ScannerOverlay>
+          <ScannerMessage>
+            <FiLoader size={24} style={{ marginBottom: '10px', animation: 'spin 1s linear infinite' }} />
+            Initializing camera...
+          </ScannerMessage>
+        </ScannerOverlay>
+      </ScannerContainer>
+    );
+  }
+
+  if (cameraError) {
+    return (
+      <ScannerContainer>
+        <ScannerOverlay>
+          <ScannerMessage>
+            {cameraError}
+          </ScannerMessage>
+        </ScannerOverlay>
+      </ScannerContainer>
+    );
+  }
 
   return (
     <ScannerContainer
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.2 }}
     >
-      <div id="reader" />
-      <ScannerBorder />
-
-      <Controls>
-        <ControlButton
-          $isActive={isFlashOn}
-          onClick={toggleFlash}
+      <ScannerElement ref={elementRef} id={scannerDivId} />
+      {cameras.length > 1 && (
+        <SwitchCameraButton
+          onClick={handleSwitchCamera}
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
         >
-          <IoFlashlight size={18} />
-        </ControlButton>
-        {cameras.length > 1 && (
-          <ControlButton
-            onClick={switchCamera}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <IoCameraReverse size={18} />
-          </ControlButton>
-        )}
-      </Controls>
+          <FiCamera size={20} />
+        </SwitchCameraButton>
+      )}
     </ScannerContainer>
   );
 };

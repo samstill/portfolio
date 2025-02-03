@@ -18,7 +18,7 @@ import {
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useProfile } from '../../../shared/context/ProfileContext';
 import { useTheme } from '../../../shared/context/ThemeContext';
-import { NotificationBadge } from '../NotificationBadge';
+import NotificationBadge from '../NotificationBadge';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../../firebase';
 import { toast } from 'react-hot-toast';

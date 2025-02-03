@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
-import { collection, getDocs, updateDoc, doc, getFirestore } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, getFirestore, query, where, or, getDoc } from 'firebase/firestore';
 import { FiUsers, FiUserCheck, FiUserX, FiTag, FiCheck, FiX, FiCamera, FiSearch, FiTrash2, FiKey } from 'react-icons/fi'; // Add this import
 import { toast } from 'react-hot-toast'; // Add this import
 import { UserData } from '../../shared/types/user';
@@ -14,153 +14,368 @@ import { ModelSelector } from '../components/ModelSelector';
 import { useAI } from '../../shared/contexts/AIContext';
 import TicketValidation from './TicketValidation';
 import { Skeleton } from '../components/Skeleton';
+import { SearchBar } from '../components/SearchBar';
+import { useInView } from 'react-intersection-observer';
+import debounce from 'lodash/debounce';
+import { useNavigate } from 'react-router-dom';
 
 const Container = styled.div`
   min-height: 100vh;
   padding: 80px 20px 20px;
   background: ${props => props.theme.background};
+  background: linear-gradient(135deg, ${props => props.theme.background}, ${props => props.theme.background}F2);
+
+  @media (max-width: 768px) {
+    padding: 60px 0 15px;
+    margin: 0;
+    width: 100%;
+  }
 `;
 
 const Header = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 30px;
+  margin-bottom: 35px;
+  gap: 25px;
 
   @media (max-width: 768px) {
     flex-direction: column;
-    gap: 15px;
     align-items: stretch;
+    margin-bottom: 25px;
+    gap: 20px;
+    padding: 0 15px;
   }
 `;
 
 const AdminCard = styled.div`
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
-  padding: 30px;
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 35px 0;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+  overflow: hidden;
 
   @media (max-width: 768px) {
-    padding: 20px;
-    margin: 0 10px;
+    padding: 20px 0;
+    border-radius: 0;
+    background: transparent;
+    backdrop-filter: none;
+    box-shadow: none;
+    border: none;
+    margin: 0;
+    width: 100%;
+  }
+`;
+
+const ContentWrapper = styled.div`
+  padding: 0 35px;
+
+  @media (max-width: 768px) {
+    padding: 0 15px;
   }
 `;
 
 const Title = styled.h1`
-  font-size: 2rem;
+  font-size: 2.2rem;
   color: ${props => props.theme.text};
   margin: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  white-space: nowrap;
+  font-weight: 700;
+  letter-spacing: -0.5px;
 
   @media (max-width: 768px) {
-    font-size: 1.5rem;
+    font-size: 1.8rem;
     justify-content: center;
   }
 `;
 
 const UsersGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 30px;
+  padding: 10px 0;
 
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
+    gap: 25px;
   }
 `;
 
 const UserCard = styled(motion.div)`
-  background: rgba(255, 255, 255, 0.05);
-  padding: 20px;
-  border-radius: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 25px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(31, 38, 135, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  @media (max-width: 768px) {
+    padding: 20px;
+    gap: 15px;
+  }
 `;
 
 const UserInfo = styled.div`
-  margin-bottom: 15px;
+  overflow: hidden;
+  flex: 1;
   
   h3 {
     color: ${props => props.theme.text};
-    font-size: 1.2rem;
-    margin-bottom: 5px;
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin: 0 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   
   p {
-    color: ${props => props.theme.text}CC;
+    color: ${props => props.theme.textSecondary};
     font-size: 0.9rem;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
+`;
+
+const UserControls = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-left: 35px;
+  margin-top: 15px;
+
+  @media (max-width: 768px) {
+    margin-left: 15px;
+    margin-top: 12px;
+  }
+`;
+
+const UserActions = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 `;
 
 const RoleToggle = styled.button<{ $isAdmin: boolean }>`
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 10px;
+  padding: 12px 20px;
   background: ${props => props.$isAdmin ? 
     'linear-gradient(135deg, #6e8efb, #4a6cf7)' : 
-    'rgba(255, 255, 255, 0.1)'};
+    'rgba(255, 255, 255, 0.05)'};
   color: ${props => props.theme.text};
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
+  border: 1px solid ${props => props.$isAdmin ? 
+    'transparent' : 
+    'rgba(255, 255, 255, 0.15)'};
+  border-radius: 12px;
   cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.3s ease;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  width: fit-content;
+  letter-spacing: 0.2px;
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(74, 108, 247, 0.4);
+    box-shadow: ${props => props.$isAdmin ?
+      '0 8px 20px rgba(74, 108, 247, 0.35)' :
+      '0 8px 20px rgba(255, 255, 255, 0.1)'};
+    background: ${props => props.$isAdmin ? 
+      'linear-gradient(135deg, #4a6cf7, #6e8efb)' : 
+      'rgba(255, 255, 255, 0.08)'};
+  }
+
+  @media (max-width: 768px) {
+    font-size: 0.95rem;
+    padding: 10px 18px;
+  }
+`;
+
+const UserActionButtons = styled.div`
+  display: flex;
+  gap: 12px;
+`;
+
+const UserActionButton = styled(motion.button)<{ $variant: 'danger' | 'primary' | 'secondary' }>`
+  padding: 12px;
+  background: ${props => {
+    switch (props.$variant) {
+      case 'danger': return 'rgba(244, 67, 54, 0.08)';
+      case 'primary': return 'rgba(74, 108, 247, 0.08)';
+      case 'secondary': return 'rgba(255, 255, 255, 0.05)';
+    }
+  }};
+  color: ${props => {
+    switch (props.$variant) {
+      case 'danger': return '#ff4d4d';
+      case 'primary': return '#4a6cf7';
+      case 'secondary': return props.theme.text;
+    }
+  }};
+  border: 1px solid ${props => {
+    switch (props.$variant) {
+      case 'danger': return '#ff4d4d';
+      case 'primary': return '#4a6cf7';
+      case 'secondary': return 'rgba(255, 255, 255, 0.15)';
+    }
+  }};
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: ${props => {
+      switch (props.$variant) {
+        case 'danger': return '0 8px 20px rgba(244, 67, 54, 0.25)';
+        case 'primary': return '0 8px 20px rgba(74, 108, 247, 0.25)';
+        case 'secondary': return '0 8px 20px rgba(255, 255, 255, 0.1)';
+      }
+    }};
+    background: ${props => {
+      switch (props.$variant) {
+        case 'danger': return 'rgba(244, 67, 54, 0.15)';
+        case 'primary': return 'rgba(74, 108, 247, 0.15)';
+        case 'secondary': return 'rgba(255, 255, 255, 0.08)';
+      }
+    }};
+  }
+
+  @media (max-width: 768px) {
+    width: 40px;
+    height: 40px;
   }
 `;
 
 const TabContainer = styled.div`
   display: flex;
-  gap: 10px;
-  margin-bottom: 30px;
-  overflow-x: auto;
-  padding-bottom: 5px;
+  gap: 8px;
+  margin: 0 35px 35px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  width: fit-content;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 24px -8px rgba(0, 0, 0, 0.1);
+  transform-origin: left center;
 
   @media (max-width: 768px) {
-    justify-content: stretch;
-    gap: 8px;
-    
-    > button {
-      flex: 1;
-      min-width: 120px;
-    }
+    width: calc(100% - 30px);
+    margin: 0 auto 25px;
+    justify-content: center;
   }
 `;
 
 const Tab = styled(motion.button)<{ $active: boolean }>`
-  padding: 12px 24px;
+  padding: 10px 24px;
   background: ${props => props.$active ? 
-    'linear-gradient(135deg, #6e8efb, #4a6cf7)' : 
-    'rgba(255, 255, 255, 0.1)'};
+    'linear-gradient(135deg, rgba(110, 142, 251, 0.9), rgba(74, 108, 247, 0.9))' : 
+    'transparent'};
   border: none;
   border-radius: 12px;
-  color: ${props => props.$active ? 'white' : props.theme.text};
+  color: ${props => props.$active ? 'white' : props.theme.textSecondary};
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 0.95rem;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  white-space: nowrap;
+  min-width: fit-content;
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.3px;
+  backdrop-filter: ${props => props.$active ? 'blur(8px)' : 'none'};
+  box-shadow: ${props => props.$active ? 
+    '0 4px 15px rgba(74, 108, 247, 0.2)' : 
+    'none'};
+  transform-origin: center center;
+
+  svg {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
   &:hover {
-    background: ${props => !props.$active && 'rgba(255, 255, 255, 0.2)'};
+    color: ${props => props.$active ? 'white' : props.theme.text};
+    background: ${props => props.$active ? 
+      'linear-gradient(135deg, rgba(110, 142, 251, 0.95), rgba(74, 108, 247, 0.95))' : 
+      'rgba(255, 255, 255, 0.08)'};
+    
+    svg {
+      transform: scale(1.15) rotate(5deg);
+    }
+  }
+
+  @media (max-width: 768px) {
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    flex: 1;
+    justify-content: center;
   }
 `;
 
 const TicketsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  gap: 25px;
+  margin-top: 20px;
+  width: 100%;
 
-  @media (max-width: 768px) {
+  @media (min-width: 1800px) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  @media (min-width: 1400px) and (max-width: 1799px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @media (min-width: 768px) and (max-width: 1399px) {
+    grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  }
+
+  @media (max-width: 767px) {
     grid-template-columns: 1fr;
+    gap: 15px;
   }
 `;
 
@@ -169,6 +384,7 @@ const TicketCardHeader = styled.div`
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 15px;
+  gap: 10px;
 `;
 
 const TicketTitle = styled.h3`
@@ -176,14 +392,25 @@ const TicketTitle = styled.h3`
   color: ${props => props.theme.text};
   margin: 0;
   flex: 1;
-  margin-right: 10px;
+  word-break: break-word;
+
+  @media (max-width: 768px) {
+    font-size: 1.1rem;
+  }
 `;
 
 const TicketDetails = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 15px;
   margin: 15px 0;
+  flex: 1;
+  margin-bottom: 50px;
+
+  @media (max-width: 768px) {
+    gap: 10px;
+    margin-bottom: 45px;
+  }
 `;
 
 const DetailItem = styled.div`
@@ -197,6 +424,16 @@ const DetailItem = styled.div`
     font-size: 0.95rem;
     color: ${props => props.theme.text};
     font-weight: 500;
+    word-break: break-word;
+  }
+
+  @media (max-width: 768px) {
+    .label {
+      font-size: 0.8rem;
+    }
+    .value {
+      font-size: 0.9rem;
+    }
   }
 `;
 
@@ -230,8 +467,14 @@ const TicketFooter = styled.div`
 
 const TicketActions = styled.div`
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  margin-left: 35px;
   margin-top: 15px;
+
+  @media (max-width: 768px) {
+    margin-left: 15px;
+    margin-top: 12px;
+  }
 `;
 
 const ActionButton = styled(motion.button)<{ $variant: 'verify' | 'cancel' }>`
@@ -254,12 +497,13 @@ const ActionButton = styled(motion.button)<{ $variant: 'verify' | 'cancel' }>`
 `;
 
 const StatusBadge = styled.span<{ status: Ticket['status'] }>`
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 5px 10px;
   border-radius: 15px;
   font-size: 0.85rem;
   font-weight: 500;
-  margin-left: 10px;
+  white-space: nowrap;
   background: ${props => {
     switch (props.status) {
       case 'valid': return 'rgba(76, 175, 80, 0.2)';
@@ -277,15 +521,20 @@ const StatusBadge = styled.span<{ status: Ticket['status'] }>`
     }
   }};
   backdrop-filter: blur(5px);
+
+  @media (max-width: 768px) {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+  }
 `;
 
 const QRScannerSection = styled(motion.div)`
   width: 100%;
-  max-width: 400px;
   margin: 20px auto;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
 `;
 
 const QRScannerButton = styled(motion.button)`
@@ -293,116 +542,57 @@ const QRScannerButton = styled(motion.button)`
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
-  max-width: 400px;
+  width: calc(100% - 30px);
+  max-width: 600px;
   margin: 20px auto;
-  padding: 12px;
-  background: linear-gradient(135deg, #6e8efb, #4a6cf7);
-  color: white;
-  border: none;
+  padding: 16px;
+  background: ${props => props.$isScanning ? 
+    'rgba(244, 67, 54, 0.2)' : 
+    'linear-gradient(135deg, #6e8efb, #4a6cf7)'};
+  color: ${props => props.$isScanning ? '#F44336' : 'white'};
+  border: ${props => props.$isScanning ? '1px solid #F44336' : 'none'};
   border-radius: 12px;
   cursor: pointer;
   font-weight: 500;
-  box-shadow: 0 4px 12px rgba(74, 108, 247, 0.2);
+  font-size: 1rem;
+  box-shadow: ${props => props.$isScanning ? 
+    '0 4px 12px rgba(244, 67, 54, 0.2)' : 
+    '0 4px 12px rgba(74, 108, 247, 0.2)'};
   transition: all 0.3s ease;
 
   &:hover {
-    background: linear-gradient(135deg, #4a6cf7, #6e8efb);
+    background: ${props => props.$isScanning ? 
+      'rgba(244, 67, 54, 0.3)' : 
+      'linear-gradient(135deg, #4a6cf7, #6e8efb)'};
+    transform: translateY(-2px);
   }
-`;
-
-const SearchContainer = styled.div`
-  margin-bottom: 20px;
-  position: relative;
-  max-width: 600px;
-  margin: 0 auto 20px;
 
   @media (max-width: 768px) {
-    margin: 0 0 20px;
+    width: calc(100% - 30px);
+    margin: 15px auto;
+    padding: 14px;
+    font-size: 0.95rem;
   }
 `;
 
-const SearchInput = styled(motion.input)`
+const SearchWrapper = styled.div`
   width: 100%;
-  padding: 12px 20px;
-  padding-right: 40px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  color: ${props => props.theme.text};
-  font-size: 1rem;
-  backdrop-filter: blur(10px);
+  padding: 0 15px;
+  margin-bottom: 20px;
+  box-sizing: border-box;
 
   @media (max-width: 768px) {
-    font-size: 0.9rem;
-    padding: 10px 16px;
-    padding-right: 36px;
-  }
+    padding: 0 15px;
+    margin-bottom: 15px;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
 
-  &:focus {
-    outline: none;
-    border-color: #4a6cf7;
-    box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.2);
-  }
-
-  &::placeholder {
-    color: ${props => props.theme.text}80;
-  }
-`;
-
-const SearchIcon = styled(FiSearch)`
-  position: absolute;
-  right: 15px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: ${props => props.theme.text}80;
-`;
-
-const ClearButton = styled(motion.button)`
-  position: absolute;
-  right: 15px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: ${props => props.theme.text}80;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  padding: 5px;
-
-  &:hover {
-    color: ${props => props.theme.text};
-  }
-`;
-
-const TicketStats = styled.div`
-  position: absolute;
-  bottom: 15px;
-  right: 15px;
-  display: flex;
-  gap: 8px;
-  z-index: 2;
-`;
-
-const StatBadge = styled.div`
-  background: rgba(74, 108, 247, 0.15);
-  padding: 6px 12px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid rgba(74, 108, 247, 0.3);
-
-  .count {
-    font-weight: 600;
-    color: #4a6cf7;
-    font-size: 1.1rem;
-  }
-
-  .label {
-    color: ${props => props.theme.textSecondary};
-    font-size: 0.9rem;
+    form {
+      max-width: 100%;
+      width: 100%;
+      box-sizing: border-box;
+    }
   }
 `;
 
@@ -410,7 +600,7 @@ const TicketCard = styled(motion.div)<{ $isSelected?: boolean }>`
   background: ${props => props.$isSelected ? 
     'rgba(74, 108, 247, 0.15)' : 
     'rgba(255, 255, 255, 0.05)'};
-  padding: 20px;
+  padding: 25px;
   border-radius: 15px;
   border: 1px solid ${props => props.$isSelected ? 
     'rgba(74, 108, 247, 0.5)' : 
@@ -418,14 +608,26 @@ const TicketCard = styled(motion.div)<{ $isSelected?: boolean }>`
   position: relative;
   cursor: pointer;
   transition: all 0.3s ease;
-  min-height: 280px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transform: translateZ(0);
+  will-change: transform;
   
   &:hover {
     background: ${props => props.$isSelected ? 
       'rgba(74, 108, 247, 0.2)' : 
       'rgba(255, 255, 255, 0.08)'};
-    transform: translateY(-5px);
-    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+    transform: translateY(-5px) translateZ(0);
+    box-shadow: 0 5px 20px -5px rgba(31, 38, 135, 0.15);
+    z-index: 1;
+  }
+
+  @media (max-width: 768px) {
+    padding: 20px;
+    margin: 0;
+    width: calc(100% - 30px);
+    margin: 0 auto;
   }
 `;
 
@@ -443,38 +645,20 @@ const ValidationOverlay = styled(motion.div)`
   z-index: 1000;
   max-height: 90vh;
   overflow-y: auto;
+  padding: env(safe-area-inset-bottom);
   
-  /* Custom scrollbar for the main overlay */
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    
-    &:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-  }
-
-  /* Padding for content */
   > div {
     padding: 30px;
-    padding-bottom: env(safe-area-inset-bottom, 30px); /* For iOS devices */
+    max-width: 800px;
+    margin: 0 auto;
   }
 
   @media (max-width: 768px) {
     max-height: 85vh;
+    border-radius: 15px 15px 0 0;
     
     > div {
-      padding: 20px;
-      padding-bottom: env(safe-area-inset-bottom, 20px);
+      padding: 20px 15px;
     }
   }
 `;
@@ -499,143 +683,624 @@ const ValidationCloseButton = styled(motion.button)`
   }
 `;
 
-const UserActions = styled.div`
-  display: flex;
-  gap: 8px;
-  margin-top: 15px;
-`;
+const NoResults = styled(motion.div)`
+  text-align: center;
+  padding: 40px;
+  color: ${props => props.theme.textSecondary};
+  font-size: 1.1rem;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 
-const UserActionButton = styled(motion.button)<{ $variant: 'danger' | 'primary' | 'secondary' }>`
-  padding: 8px;
-  background: ${props => {
-    switch (props.$variant) {
-      case 'danger': return 'rgba(244, 67, 54, 0.1)';
-      case 'primary': return 'rgba(74, 108, 247, 0.1)';
-      case 'secondary': return 'rgba(255, 255, 255, 0.1)';
-    }
-  }};
-  color: ${props => {
-    switch (props.$variant) {
-      case 'danger': return '#F44336';
-      case 'primary': return '#4a6cf7';
-      case 'secondary': return props.theme.text;
-    }
-  }};
-  border: 1px solid ${props => {
-    switch (props.$variant) {
-      case 'danger': return '#F44336';
-      case 'primary': return '#4a6cf7';
-      case 'secondary': return 'rgba(255, 255, 255, 0.2)';
-    }
-  }};
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  svg {
+    margin-bottom: 15px;
+    opacity: 0.7;
   }
 
-  &:hover:not(:disabled) {
-    background: ${props => {
-      switch (props.$variant) {
-        case 'danger': return 'rgba(244, 67, 54, 0.2)';
-        case 'primary': return 'rgba(74, 108, 247, 0.2)';
-        case 'secondary': return 'rgba(255, 255, 255, 0.15)';
-      }
-    }};
+  @media (max-width: 768px) {
+    padding: 30px;
+    font-size: 1rem;
+  }
+`;
+
+const TicketStats = styled.div`
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+
+  @media (max-width: 768px) {
+    bottom: 15px;
+    right: 15px;
+  }
+`;
+
+const StatBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(74, 108, 247, 0.15);
+  border-radius: 20px;
+  font-size: 0.9rem;
+  color: #4a6cf7;
+
+  .count {
+    font-weight: 600;
+  }
+
+  .label {
+    opacity: 0.8;
+  }
+
+  @media (max-width: 768px) {
+    padding: 4px 10px;
+    font-size: 0.85rem;
   }
 `;
 
 type TabType = 'users' | 'tickets';
 
+// Add these styled components for skeletons
+const SkeletonTitle = styled.div`
+  height: 24px;
+  width: 60%;
+  margin-bottom: 10px;
+`;
+
+const SkeletonText = styled.div`
+  height: 18px;
+  width: 80%;
+  margin-bottom: 20px;
+`;
+
+const SkeletonButton = styled.div`
+  height: 36px;
+  width: 120px;
+  border-radius: 8px;
+`;
+
+const SkeletonHeader = styled.div`
+  height: 24px;
+  width: 70%;
+`;
+
+const SkeletonBar = styled.div`
+  height: 6px;
+  width: 100%;
+  margin-top: 15px;
+`;
+
+const SkeletonDetailLabel = styled.div`
+  height: 16px;
+  width: 60%;
+  margin-bottom: 8px;
+`;
+
+const SkeletonDetailValue = styled.div`
+  height: 20px;
+  width: 80%;
+`;
+
+// Update the UserCardSkeleton component
 const UserCardSkeleton = () => (
   <UserCard>
-    <Skeleton height="24px" width="60%" marginBottom="10px" />
-    <Skeleton height="18px" width="80%" marginBottom="20px" />
-    <Skeleton height="36px" width="120px" borderRadius="8px" />
+    <SkeletonTitle>
+      <Skeleton />
+    </SkeletonTitle>
+    <SkeletonText>
+      <Skeleton />
+    </SkeletonText>
+    <SkeletonButton>
+      <Skeleton />
+    </SkeletonButton>
   </UserCard>
 );
 
+// Update the TicketCardSkeleton component
 const TicketCardSkeleton = () => (
   <TicketCard as="div">
     <TicketCardHeader>
-      <Skeleton height="24px" width="70%" />
+      <SkeletonHeader>
+        <Skeleton />
+      </SkeletonHeader>
     </TicketCardHeader>
-    <Skeleton height="6px" marginTop="15px" />
+    <SkeletonBar>
+      <Skeleton />
+    </SkeletonBar>
     <TicketDetails>
       <DetailItem>
-        <Skeleton height="16px" width="60%" marginBottom="8px" />
-        <Skeleton height="20px" width="80%" />
+        <SkeletonDetailLabel>
+          <Skeleton />
+        </SkeletonDetailLabel>
+        <SkeletonDetailValue>
+          <Skeleton />
+        </SkeletonDetailValue>
       </DetailItem>
       <DetailItem>
-        <Skeleton height="16px" width="60%" marginBottom="8px" />
-        <Skeleton height="20px" width="80%" />
+        <SkeletonDetailLabel>
+          <Skeleton />
+        </SkeletonDetailLabel>
+        <SkeletonDetailValue>
+          <Skeleton />
+        </SkeletonDetailValue>
       </DetailItem>
     </TicketDetails>
   </TicketCard>
 );
 
+// Add these animation variants
+const pageTransition = {
+  initial: { 
+    opacity: 0, 
+    y: 20,
+    scale: 0.98
+  },
+  animate: { 
+    opacity: 1, 
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.4,
+      ease: [0.4, 0, 0.2, 1],
+      scale: {
+        type: "spring",
+        damping: 25,
+        stiffness: 400
+      }
+    }
+  },
+  exit: { 
+    opacity: 0, 
+    y: -20,
+    scale: 0.98,
+    transition: {
+      duration: 0.3,
+      ease: [0.4, 0, 0.2, 1]
+    }
+  }
+};
+
+const cardTransition = {
+  initial: { 
+    opacity: 0, 
+    y: 20,
+    scale: 0.95
+  },
+  animate: { 
+    opacity: 1, 
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.4,
+      ease: [0.4, 0, 0.2, 1],
+      scale: {
+        type: "spring",
+        damping: 25,
+        stiffness: 400
+      }
+    }
+  },
+  exit: { 
+    opacity: 0,
+    scale: 0.95,
+    transition: {
+      duration: 0.3,
+      ease: [0.4, 0, 0.2, 1]
+    }
+  }
+};
+
+const overlayTransition = {
+  initial: { y: '100%', opacity: 0 },
+  animate: { y: 0, opacity: 1 },
+  exit: { y: '100%', opacity: 0 },
+  transition: { 
+    type: 'spring',
+    damping: 25,
+    stiffness: 200,
+    mass: 1
+  }
+};
+
+const staggerContainer = {
+  animate: {
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.1
+    }
+  }
+};
+
+// Add these new animation variants after the existing ones
+const loadMoreTransition = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0 },
+  transition: { duration: 0.3, ease: 'easeInOut' }
+};
+
+// Add the missing tabVariants configuration
+const tabVariants = {
+  active: {
+    scale: 1,
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 400,
+      damping: 25,
+      mass: 1
+    }
+  },
+  inactive: {
+    scale: 0.95,
+    opacity: 0.7,
+    y: 2,
+    transition: {
+      type: "spring",
+      stiffness: 400,
+      damping: 25,
+      mass: 1
+    }
+  }
+};
+
+// Add this new animation variant for the icon
+const iconVariants = {
+  active: {
+    scale: 1,
+    rotate: [0, 15, -15, 0],
+    transition: {
+      rotate: {
+        duration: 0.5,
+        ease: "easeInOut",
+        delay: 0.1
+      },
+      scale: {
+        type: "spring",
+        stiffness: 400,
+        damping: 25
+      }
+    }
+  },
+  inactive: {
+    scale: 0.9,
+    rotate: 0,
+    transition: {
+      type: "spring",
+      stiffness: 400,
+      damping: 25
+    }
+  }
+};
+
+// Add this new styled component for the loading indicator
+const LoadMoreIndicator = styled(motion.div)`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  width: 100%;
+  gap: 12px;
+  color: ${props => props.theme.textSecondary};
+  font-size: 0.9rem;
+
+  .loading-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    background: ${props => props.theme.primary};
+    border-radius: 50%;
+    opacity: 0.6;
+  }
+
+  @media (max-width: 768px) {
+    padding: 15px;
+    font-size: 0.85rem;
+  }
+`;
+
+const LoadingDot = styled(motion.div)`
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  border-radius: 50%;
+`;
+
+// Add this new styled component for the load more container
+const LoadMoreContainer = styled(motion.div)`
+  min-height: 60px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 20px;
+`;
+
+// Update the LoadingAnimation component
+const LoadingAnimation = () => (
+  <LoadMoreContainer
+    initial="initial"
+    animate="animate"
+    exit="exit"
+    variants={loadMoreTransition}
+  >
+    <LoadMoreIndicator>
+      <span>Loading more</span>
+      <div className="loading-dots">
+        {[0, 1, 2].map((i) => (
+          <LoadingDot
+            key={i}
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.6, 1, 0.6],
+              y: [0, -3, 0]
+            }}
+            transition={{
+              duration: 1.2,
+              repeat: Infinity,
+              delay: i * 0.2,
+              ease: "easeInOut"
+            }}
+          />
+        ))}
+      </div>
+    </LoadMoreIndicator>
+  </LoadMoreContainer>
+);
+
 const AdminScreen: React.FC = () => {
   const { selectedModel } = useAI();
   const [activeTab, setActiveTab] = useState<TabType>('users');
-  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [users, setUsers] = useState<UserData[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filteredTickets, setFilteredTickets] = useState<Ticket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const ITEMS_PER_PAGE = 12;
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredData, setFilteredData] = useState<{
+    users: UserData[];
+    tickets: Ticket[];
+  }>({
+    users: [],
+    tickets: []
+  });
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (activeTab === 'tickets') {
-      const fetchTickets = async () => {
-        try {
-          const allTickets = await ticketService.getAllTickets();
-          setTickets(allTickets.sort((a, b) => 
-            new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime()
-          ));
-        } catch (err) {
-          console.error('Failed to fetch tickets:', err);
-          toast.error('Failed to load tickets');
+  // Update the intersection observer configuration
+  const { ref: loadMoreRef, inView } = useInView({
+    threshold: 0,
+    rootMargin: '100px',
+    triggerOnce: false,
+    delay: 100
+  });
+
+  // Memoized data fetching functions
+  const fetchUsers = useCallback(async (searchText = '', isNewSearch = false) => {
+    try {
+      if (isNewSearch) {
+        setIsSearching(true);
+        setLoading(true);
+        setPage(1);
+        setUsers([]);
+      } else {
+        setLoadingMore(true);
+      }
+
+      const db = getFirestore();
+      const usersRef = collection(db, 'users');
+      
+      let queryRef = usersRef;
+      if (searchText) {
+        queryRef = query(usersRef, 
+          where('email', '>=', searchText),
+          where('email', '<=', searchText + '\uf8ff')
+        );
+      }
+
+      const querySnapshot = await getDocs(queryRef);
+      const uniqueUsers = new Map();
+      querySnapshot.docs.forEach(doc => {
+        if (!uniqueUsers.has(doc.id)) {
+          uniqueUsers.set(doc.id, { 
+            uid: doc.id, 
+            ...doc.data() 
+          } as UserData);
         }
-      };
+      });
+      
+      const allUsers = Array.from(uniqueUsers.values());
+      setFilteredData(prev => ({ ...prev, users: allUsers }));
+
+      const startIndex = (page - 1) * ITEMS_PER_PAGE;
+      const paginatedUsers = allUsers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+      
+      const hasMoreItems = allUsers.length > (page * ITEMS_PER_PAGE);
+      setHasMore(hasMoreItems);
+
+      if (isNewSearch) {
+        setUsers(paginatedUsers);
+      } else {
+        setUsers(prev => {
+          const newUsers = [...prev];
+          paginatedUsers.forEach(user => {
+            if (!newUsers.some(u => u.uid === user.uid)) {
+              newUsers.push(user);
+            }
+          });
+          return newUsers;
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      toast.error('Failed to load users');
+    } finally {
+      setIsSearching(false);
+      setLoading(false);
+      setLoadingMore(false);
+      setIsInitialLoad(false);
+    }
+  }, [page]);
+
+  const fetchTickets = useCallback(async (searchText = '', isNewSearch = false) => {
+    try {
+      if (isNewSearch) {
+        setIsSearching(true);
+        setLoading(true);
+        setPage(1);
+        setTickets([]);
+      } else {
+        setLoadingMore(true);
+      }
+
+      const allTickets = await ticketService.getAllTickets();
+      
+      let filteredTickets = allTickets;
+      if (searchText) {
+        const query = searchText.toLowerCase().trim();
+        filteredTickets = allTickets.filter(ticket => {
+          if (!ticket) return false;
+          
+          const ticketNumber = ticket?.ticketNumber?.toLowerCase() || '';
+          const eventTitle = ticket?.eventDetails?.title?.toLowerCase() || '';
+          const userEmail = ticket?.userEmail?.toLowerCase() || '';
+          const status = ticket?.status?.toLowerCase() || '';
+
+          return (
+            ticketNumber.includes(query) ||
+            eventTitle.includes(query) ||
+            userEmail.includes(query) ||
+            status.includes(query)
+          );
+        });
+      }
+
+      setFilteredData(prev => ({ ...prev, tickets: filteredTickets }));
+
+      const startIndex = (page - 1) * ITEMS_PER_PAGE;
+      const paginatedTickets = filteredTickets
+        .sort((a, b) => new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime())
+        .slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+      const hasMoreItems = filteredTickets.length > (page * ITEMS_PER_PAGE);
+      setHasMore(hasMoreItems);
+
+      if (isNewSearch) {
+        setTickets(paginatedTickets);
+      } else {
+        setTickets(prev => {
+          const newTickets = [...prev];
+          paginatedTickets.forEach(ticket => {
+            if (!newTickets.some(t => t.id === ticket.id)) {
+              newTickets.push(ticket);
+            }
+          });
+          return newTickets;
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+      toast.error('Failed to load tickets');
+    } finally {
+      setIsSearching(false);
+      setLoading(false);
+      setLoadingMore(false);
+      setIsInitialLoad(false);
+    }
+  }, [page]);
+
+  // Debounced search handlers
+  const debouncedUserSearch = useMemo(
+    () => debounce((searchText: string) => fetchUsers(searchText, true), 500),
+    [fetchUsers]
+  );
+
+  const debouncedTicketSearch = useMemo(
+    () => debounce((searchText: string) => fetchTickets(searchText, true), 500),
+    [fetchTickets]
+  );
+
+  // Effect for initial data loading
+  useEffect(() => {
+    if (activeTab === 'users') {
+      fetchUsers();
+    } else {
       fetchTickets();
     }
-  }, [activeTab]);
+  }, [activeTab, fetchUsers, fetchTickets]);
 
+  // Update the infinite scroll effect
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const usersData = await userService.getAllUsers();
-        setUsers(usersData);
-      } catch (err) {
-        setError('Failed to fetch users');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const shouldLoadMore = 
+      !isInitialLoad && 
+      inView && 
+      !isSearching && 
+      !loadingMore && 
+      hasMore &&
+      (activeTab === 'users' ? filteredData.users.length > users.length : filteredData.tickets.length > tickets.length);
 
-    fetchUsers();
-  }, []);
-
-  useEffect(() => {
-    if (tickets.length > 0) {
-      const filtered = tickets.filter(ticket => 
-        ticket.ticketNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.eventDetails.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.userId.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredTickets(filtered);
+    if (shouldLoadMore) {
+      const timer = setTimeout(() => {
+        setPage(prev => prev + 1);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [searchQuery, tickets]);
+  }, [
+    inView, 
+    isSearching, 
+    loadingMore, 
+    hasMore, 
+    isInitialLoad, 
+    activeTab, 
+    filteredData.users.length, 
+    filteredData.tickets.length, 
+    users.length, 
+    tickets.length
+  ]);
+
+  // Update tab change handler
+  const handleTabChange = useCallback((newTab: TabType) => {
+    setActiveTab(newTab);
+    setPage(1);
+    setUsers([]);
+    setTickets([]);
+    setSearchQuery('');
+    setHasMore(true);
+    setIsInitialLoad(true);
+    
+    if (newTab === 'users') {
+      fetchUsers('', true);
+    } else {
+      fetchTickets('', true);
+    }
+  }, [fetchUsers, fetchTickets]);
+
+  const handleUserSearch = useCallback((searchText: string) => {
+    setSearchQuery(searchText);
+    setIsInitialLoad(true);
+    fetchUsers(searchText, true);
+  }, [fetchUsers]);
+
+  const handleTicketSearch = useCallback((searchText: string) => {
+    setSearchQuery(searchText);
+    setIsInitialLoad(true);
+    fetchTickets(searchText, true);
+  }, [fetchTickets]);
 
   const toggleUserRole = async (user: UserData) => {
     try {
@@ -696,22 +1361,34 @@ const AdminScreen: React.FC = () => {
         return;
       }
 
-      // Fetch the ticket details
-      const ticket = await ticketService.getTicket(qrData.ticketId);
+      const db = getFirestore();
+      const ticketsRef = collection(db, 'tickets');
       
-      if (!ticket) {
+      // Query Firebase directly for this specific ticket
+      const ticketDoc = doc(db, 'tickets', qrData.ticketId);
+      const ticketSnapshot = await getDoc(ticketDoc);
+      
+      if (!ticketSnapshot.exists()) {
         toast.error('Ticket not found');
         return;
       }
 
+      const ticket = { id: ticketSnapshot.id, ...ticketSnapshot.data() } as Ticket;
+
       // Check ticket status
       if (ticket.status === 'used') {
-        toast.error('Ticket has already been used');
+        toast.error('Ticket has already been used', {
+          duration: 3000,
+          icon: '⚠️'
+        });
         return;
       }
 
       if (ticket.status === 'cancelled') {
-        toast.error('Ticket has been cancelled');
+        toast.error('Ticket has been cancelled', {
+          duration: 3000,
+          icon: '❌'
+        });
         return;
       }
 
@@ -719,9 +1396,18 @@ const AdminScreen: React.FC = () => {
       setSelectedTicket(ticket);
       setIsScannerOpen(false);
 
+      // Show success toast
+      toast.success('Ticket found! Please validate below.', {
+        duration: 3000,
+        icon: '✅'
+      });
+
     } catch (error) {
       console.error('Error scanning ticket:', error);
-      toast.error('Invalid QR code');
+      toast.error('Invalid QR code', {
+        duration: 3000,
+        icon: '❌'
+      });
     }
   };
 
@@ -762,103 +1448,115 @@ const AdminScreen: React.FC = () => {
 
   const renderContent = () => {
     if (activeTab === 'users') {
-      if (loading) {
-        return (
-          <UsersGrid>
-            {[...Array(6)].map((_, index) => (
-              <UserCardSkeleton key={index} />
-            ))}
-          </UsersGrid>
-        );
-      }
-
       return (
-        <UsersGrid>
-          {users.map(user => (
-            <UserCard
-              key={user.uid}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <UserInfo>
-                <h3>{user.email}</h3>
-                <p>User ID: {user.uid.substring(0, 8)}...</p>
-              </UserInfo>
-              <RoleToggle
-                $isAdmin={user.role === 'admin'}
-                onClick={() => toggleUserRole(user)}
+        <motion.div {...pageTransition}>
+          <SearchWrapper>
+            <SearchBar
+              placeholder="Search users by email..."
+              onSearch={debouncedUserSearch}
+              isLoading={isSearching}
+            />
+          </SearchWrapper>
+          
+          <AnimatePresence mode="wait">
+            {loading ? (
+              <UsersGrid
+                as={motion.div}
+                variants={staggerContainer}
+                initial="initial"
+                animate="animate"
+                exit="exit"
               >
-                {user.role === 'admin' ? (
-                  <>
-                    <FiUserCheck size={18} />
-                    Admin
-                  </>
-                ) : (
-                  <>
-                    <FiUsers size={18} />
-                    User
-                  </>
+                {[...Array(6)].map((_, index) => (
+                  <motion.div key={index} variants={cardTransition}>
+                    <UserCardSkeleton />
+                  </motion.div>
+                ))}
+              </UsersGrid>
+            ) : users.length === 0 ? (
+              <NoResults {...pageTransition}>
+                <FiUsers size={40} />
+                <p>No users found</p>
+              </NoResults>
+            ) : (
+              <>
+                <UsersGrid
+                  as={motion.div}
+                  variants={staggerContainer}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                >
+                  {users.map((user, index) => {
+                    const uniqueKey = `${user.uid}_${index}`;
+                    return (
+                      <motion.div
+                        key={uniqueKey}
+                        variants={cardTransition}
+                        custom={index}
+                      >
+                        <UserCard
+                          onClick={() => navigate(`/admin/users/${user.uid}`)}
+                        >
+                          <UserInfo>
+                            <h3>{user.email}</h3>
+                            <p>
+                              <FiUsers size={14} />
+                              ID: {user.uid.substring(0, 8)}...
+                            </p>
+                          </UserInfo>
+                          <UserActionButton
+                            $variant="danger"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteUser(user);
+                            }}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            disabled={user.role === 'admin'}
+                            title={user.role === 'admin' ? "Can't delete admin users" : "Delete user"}
+                          >
+                            <FiTrash2 size={18} />
+                          </UserActionButton>
+                        </UserCard>
+                      </motion.div>
+                    );
+                  })}
+                </UsersGrid>
+                {(hasMore || loadingMore) && (
+                  <LoadMoreContainer ref={loadMoreRef}>
+                    {loadingMore && <LoadingAnimation />}
+                  </LoadMoreContainer>
                 )}
-              </RoleToggle>
-              <UserActions>
-                <UserActionButton
-                  $variant="primary"
-                  onClick={() => handleResetPassword(user)}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  title="Send password reset email"
-                >
-                  <FiKey size={16} />
-                </UserActionButton>
-                <UserActionButton
-                  $variant="danger"
-                  onClick={() => handleDeleteUser(user)}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  disabled={user.role === 'admin'} // Prevent deleting admin users
-                  title={user.role === 'admin' ? "Can't delete admin users" : "Delete user"}
-                >
-                  <FiTrash2 size={16} />
-                </UserActionButton>
-              </UserActions>
-            </UserCard>
-          ))}
-        </UsersGrid>
+              </>
+            )}
+          </AnimatePresence>
+        </motion.div>
       );
     }
 
     return (
-      <>
+      <motion.div {...pageTransition}>
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <SearchContainer>
-            <SearchInput
+          <SearchWrapper>
+            <SearchBar
               placeholder="Search tickets by number, event, or user..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onSearch={debouncedTicketSearch}
+              isLoading={isSearching}
             />
-            {searchQuery ? (
-              <ClearButton
-                onClick={() => setSearchQuery('')}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <FiX size={18} />
-              </ClearButton>
-            ) : (
-              <SearchIcon size={18} />
-            )}
-          </SearchContainer>
+          </SearchWrapper>
 
           <QRScannerButton
             onClick={() => setIsScannerOpen(!isScannerOpen)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            $isScanning={isScannerOpen}
           >
             <FiCamera size={20} />
-            {isScannerOpen ? 'Close Scanner' : 'Scan Ticket QR'}
+            {isScannerOpen ? 'Stop Scanning' : 'Scan Ticket QR Code'}
           </QRScannerButton>
 
           <AnimatePresence>
@@ -872,8 +1570,9 @@ const AdminScreen: React.FC = () => {
                 <QRScanner
                   onScan={handleScan}
                   onError={(error) => {
-                    console.error('Scanner error:', error);
-                    toast.error('Failed to initialize camera');
+                    if (!error.includes('No QR code found')) {
+                      toast.error('Camera error. Please try again.');
+                    }
                   }}
                 />
               </QRScannerSection>
@@ -881,107 +1580,144 @@ const AdminScreen: React.FC = () => {
           </AnimatePresence>
         </motion.div>
 
-        <TicketsGrid>
+        <AnimatePresence mode="wait">
           {loading ? (
-            [...Array(6)].map((_, index) => (
-              <TicketCardSkeleton key={index} />
-            ))
-          ) : (searchQuery ? filteredTickets : tickets).map(ticket => {
-            const usagePercentage = (ticket.usedCount / ticket.quantity) * 100;
-            const isSelected = selectedTicket?.id === ticket.id;
-            
-            return (
-              <TicketCard
-                key={ticket.id}
-                $isSelected={isSelected}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                onClick={() => setSelectedTicket(ticket)}
+            <TicketsGrid
+              as={motion.div}
+              variants={staggerContainer}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              {[...Array(6)].map((_, index) => (
+                <motion.div key={index} variants={cardTransition}>
+                  <TicketCardSkeleton />
+                </motion.div>
+              ))}
+            </TicketsGrid>
+          ) : tickets.length === 0 ? (
+            <NoResults {...pageTransition}>
+              <FiTag size={40} />
+              <p>No tickets found</p>
+            </NoResults>
+          ) : (
+            <>
+              <TicketsGrid
+                as={motion.div}
+                variants={staggerContainer}
+                initial="initial"
+                animate="animate"
+                exit="exit"
               >
-                <TicketCardHeader>
-                  <TicketTitle>{ticket.eventDetails.title}</TicketTitle>
-                  <StatusBadge status={ticket.status}>
-                    {ticket.status.toUpperCase()}
-                  </StatusBadge>
-                </TicketCardHeader>
-
-                <ProgressBar $percentage={usagePercentage} />
-                
-                <TicketDetails>
-                  <DetailItem>
-                    <div className="label">Ticket #</div>
-                    <div className="value">{ticket.ticketNumber}</div>
-                  </DetailItem>
-                  <DetailItem>
-                    <div className="label">User ID</div>
-                    <div className="value" style={{ fontSize: '0.8rem' }}>
-                      {ticket.userId.substring(0, 8)}...
-                    </div>
-                  </DetailItem>
-                  <DetailItem>
-                    <div className="label">Event Date</div>
-                    <div className="value">
-                      {new Date(ticket.eventDetails.date).toLocaleDateString()}
-                    </div>
-                  </DetailItem>
-                  <DetailItem>
-                    <div className="label">Purchase Date</div>
-                    <div className="value">
-                      {new Date(ticket.purchasedAt).toLocaleDateString()}
-                    </div>
-                  </DetailItem>
-                  {ticket.lastValidatedAt && (
-                    <DetailItem>
-                      <div className="label">Last Used</div>
-                      <div className="value">
-                        {new Date(ticket.lastValidatedAt).toLocaleString()}
-                      </div>
-                    </DetailItem>
-                  )}
-                </TicketDetails>
-
-                {ticket.status === 'valid' && (
-                  <TicketFooter>
-                    <TicketActions>
-                      <ActionButton
-                        $variant="verify"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleValidateTicket(ticket.id);
-                        }}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
+                {tickets.map((ticket, index) => {
+                  const usagePercentage = (ticket.usedCount / ticket.quantity) * 100;
+                  const isSelected = selectedTicket?.id === ticket.id;
+                  // Add additional key uniqueness by combining id with index
+                  const uniqueKey = `${ticket.id}_${index}`;
+                  
+                  return (
+                    <motion.div
+                      key={uniqueKey}
+                      variants={cardTransition}
+                      custom={index}
+                    >
+                      <TicketCard
+                        $isSelected={isSelected}
+                        onClick={() => setSelectedTicket(ticket)}
                       >
-                        <FiCheck size={16} />
-                        Quick Validate
-                      </ActionButton>
-                      <ActionButton
-                        $variant="cancel"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCancelTicket(ticket.id);
-                        }}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        <FiX size={16} />
-                        Cancel
-                      </ActionButton>
-                    </TicketActions>
-                  </TicketFooter>
-                )}
+                        <TicketCardHeader>
+                          <TicketTitle>{ticket.eventDetails.title}</TicketTitle>
+                          <StatusBadge status={ticket.status}>
+                            {ticket.status.toUpperCase()}
+                          </StatusBadge>
+                        </TicketCardHeader>
 
-                <TicketStats>
-                  <StatBadge>
-                    <span className="count">{ticket.usedCount}</span>
-                    <span className="label">/ {ticket.quantity}</span>
-                  </StatBadge>
-                </TicketStats>
-              </TicketCard>
-            );
-          })}
-        </TicketsGrid>
-      </>
+                        <ProgressBar $percentage={usagePercentage} />
+                        
+                        <TicketDetails>
+                          <DetailItem>
+                            <div className="label">Ticket #</div>
+                            <div className="value">{ticket.ticketNumber}</div>
+                          </DetailItem>
+                          <DetailItem>
+                            <div className="label">User ID</div>
+                            <div className="value" style={{ fontSize: '0.8rem' }}>
+                              {ticket.userId.substring(0, 8)}...
+                            </div>
+                          </DetailItem>
+                          <DetailItem>
+                            <div className="label">Event Date</div>
+                            <div className="value">
+                              {new Date(ticket.eventDetails.date).toLocaleDateString()}
+                            </div>
+                          </DetailItem>
+                          <DetailItem>
+                            <div className="label">Purchase Date</div>
+                            <div className="value">
+                              {new Date(ticket.purchasedAt).toLocaleDateString()}
+                            </div>
+                          </DetailItem>
+                          {ticket.lastValidatedAt && (
+                            <DetailItem>
+                              <div className="label">Last Used</div>
+                              <div className="value">
+                                {new Date(ticket.lastValidatedAt).toLocaleString()}
+                              </div>
+                            </DetailItem>
+                          )}
+                        </TicketDetails>
+
+                        {ticket.status === 'valid' && (
+                          <TicketFooter>
+                            <TicketActions>
+                              <ActionButton
+                                $variant="verify"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleValidateTicket(ticket.id);
+                                }}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                              >
+                                <FiCheck size={16} />
+                                Quick Validate
+                              </ActionButton>
+                              <ActionButton
+                                $variant="cancel"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCancelTicket(ticket.id);
+                                }}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                              >
+                                <FiX size={16} />
+                                Cancel
+                              </ActionButton>
+                            </TicketActions>
+                          </TicketFooter>
+                        )}
+
+                        <TicketStats>
+                          <StatBadge>
+                            <span className="count">{ticket.usedCount}</span>
+                            <span className="label">/ {ticket.quantity}</span>
+                          </StatBadge>
+                        </TicketStats>
+                      </TicketCard>
+                    </motion.div>
+                  );
+                })}
+              </TicketsGrid>
+              {(hasMore || loadingMore) && (
+                <LoadMoreContainer ref={loadMoreRef}>
+                  {loadingMore && <LoadingAnimation />}
+                </LoadMoreContainer>
+              )}
+            </>
+          )}
+        </AnimatePresence>
+      </motion.div>
     );
   };
 
@@ -989,45 +1725,70 @@ const AdminScreen: React.FC = () => {
     <Container>
       <BackButton />
       <AdminCard
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        as={motion.div}
+        {...pageTransition}
       >
-        <Header>
-          <Title>Admin Dashboard</Title>
-          <ModelSelector />
-        </Header>
-        <TabContainer>
+        <TabContainer
+          as={motion.div}
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{
+            type: "spring",
+            stiffness: 400,
+            damping: 25,
+            mass: 1
+          }}
+        >
           <Tab
+            as={motion.button}
+            variants={tabVariants}
+            animate={activeTab === 'users' ? 'active' : 'inactive'}
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
             $active={activeTab === 'users'}
-            onClick={() => setActiveTab('users')}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            onClick={() => handleTabChange('users')}
           >
-            <FiUsers size={20} />
+            <motion.div
+              variants={iconVariants}
+              animate={activeTab === 'users' ? 'active' : 'inactive'}
+              initial="inactive"
+            >
+              <FiUsers size={18} />
+            </motion.div>
             Users
           </Tab>
           <Tab
+            as={motion.button}
+            variants={tabVariants}
+            animate={activeTab === 'tickets' ? 'active' : 'inactive'}
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
             $active={activeTab === 'tickets'}
-            onClick={() => setActiveTab('tickets')}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            onClick={() => handleTabChange('tickets')}
           >
-            <FiTag size={20} />
+            <motion.div
+              variants={iconVariants}
+              animate={activeTab === 'tickets' ? 'active' : 'inactive'}
+              initial="inactive"
+            >
+              <FiTag size={18} />
+            </motion.div>
             Tickets
           </Tab>
         </TabContainer>
 
-        {renderContent()}
+        <ContentWrapper>
+          {renderContent()}
+        </ContentWrapper>
       </AdminCard>
       
       <AnimatePresence>
         {selectedTicket && (
           <ValidationOverlay
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            variants={overlayTransition}
+            initial="initial"
+            animate="animate"
+            exit="exit"
           >
             <ValidationCloseButton
               onClick={() => setSelectedTicket(null)}
@@ -1040,14 +1801,15 @@ const AdminScreen: React.FC = () => {
               ticket={selectedTicket}
               onValidationComplete={() => {
                 if (selectedTicket.id) {
-                  // Refresh both the selected ticket and the tickets list
                   Promise.all([
                     ticketService.getTicket(selectedTicket.id).then(setSelectedTicket),
-                    ticketService.getAllTickets().then(newTickets => 
-                      setTickets(newTickets.sort((a, b) => 
+                    ticketService.getAllTickets().then((newTickets) => {
+                      setTickets(
+                        newTickets.sort((a, b) => 
                         new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime()
-                      ))
                     )
+                      );
+                    })
                   ]);
                 }
               }}

@@ -23,11 +23,12 @@ export const eventService = {
 
   getEvents: async () => {
     try {
-      const eventsQuery = query(eventsCollection, orderBy('date', 'asc'));
-      const snapshot = await getDocs(eventsQuery);
+      const snapshot = await getDocs(eventsCollection);
       return snapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        availableTickets: doc.data().availableTickets || 0,
+        soldTickets: doc.data().soldTickets || 0
       }));
     } catch (error) {
       console.error('Error fetching events:', error);
