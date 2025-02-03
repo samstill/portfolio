@@ -53,23 +53,61 @@ const IconWrapper = styled.div`
 
 const NoResults = styled(motion.div)`
   text-align: center;
-  padding: 40px;
+  padding: 40px 20px;
   color: ${props => props.theme.textSecondary};
   font-size: 1.1rem;
   width: 100%;
+  max-width: calc(100vw - 40px);
+  margin: 20px auto;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 12px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
 
   svg {
     margin-bottom: 15px;
     opacity: 0.7;
+    font-size: 48px;
+  }
+
+  p {
+    margin: 0;
+    max-width: 80%;
+    line-height: 1.5;
   }
 
   @media (max-width: 768px) {
-    padding: 30px;
+    padding: 30px 15px;
     font-size: 1rem;
+    margin: 15px auto;
+    min-height: 180px;
+    max-width: calc(100vw - 30px);
+
+    svg {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+
+    p {
+      max-width: 90%;
+    }
+  }
+
+  @media (max-width: 480px) {
+    padding: 25px 15px;
+    min-height: 160px;
+    
+    svg {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
   }
 `;
 

@@ -1,9 +1,10 @@
-import { collection, doc, getDoc, getDocs, query, where, addDoc, updateDoc, runTransaction, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where, addDoc, updateDoc, runTransaction, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config';
 import { Ticket } from '../../domain/entities/Ticket';
 import { generateQR } from '../../shared/utils/qrcode';
 import { eventService } from './eventService';
 import { useAuth } from '../../shared/context/AuthContext';
+import logger from '../../shared/utils/logger';
 
 export const ticketService = {
   async createTicket(ticketData: Omit<Ticket, 'id' | 'qrCode' | 'validationsRemaining' | 'validations'>): Promise<Ticket> {
@@ -21,24 +22,41 @@ export const ticketService = {
         throw new Error(`Only ${eventData.availableTickets} tickets available`);
       }
 
-      // Create the ticket document with multiple validations support
-      const ticketRef = await addDoc(collection(db, 'tickets'), {
+      // Create initial ticket data
+      const initialTicketData = {
         ...ticketData,
         status: 'valid',
-        validationsRemaining: ticketData.quantity, // Set initial validations
-        validations: [], // Initialize empty validations array
+        validationsRemaining: ticketData.quantity,
+        usedCount: 0,
+        validations: [],
         purchasedAt: new Date().toISOString()
-      });
+      };
+
+      // Create the ticket document
+      const ticketRef = await addDoc(collection(db, 'tickets'), initialTicketData);
       
       // Generate QR code with ticket details
       const qrCodeData = {
         ticketId: ticketRef.id,
         eventId: ticketData.eventId,
+        eventDetails: {
+          title: ticketData.eventDetails.title,
+          date: ticketData.eventDetails.date,
+          location: ticketData.eventDetails.location
+        },
+        ticketNumber: ticketData.ticketNumber,
         quantity: ticketData.quantity,
-        verificationCode: ticketData.verificationCode
+        validationsRemaining: ticketData.quantity,
+        verificationCode: ticketData.verificationCode,
+        purchasedAt: initialTicketData.purchasedAt,
+        status: 'valid'
       };
       
+      // Generate and verify QR code
       const qrCode = await generateQR(JSON.stringify(qrCodeData));
+      if (!qrCode) {
+        throw new Error('Failed to generate QR code');
+      }
       
       // Update ticket with QR code
       await updateDoc(ticketRef, { qrCode });
@@ -46,161 +64,79 @@ export const ticketService = {
       // Update event ticket count
       await eventService.updateTicketCount(ticketData.eventId, ticketData.quantity);
       
+      // Return complete ticket data
       return {
         id: ticketRef.id,
-        qrCode,
-        validationsRemaining: ticketData.quantity,
-        validations: [],
-        ...ticketData
+        ...initialTicketData,
+        qrCode
       };
     } catch (error) {
-      console.error('Error creating ticket:', error);
+      logger.error('Error creating ticket:', error);
       throw error;
     }
   },
 
-  async getTicket(ticketId: string): Promise<Ticket | null> {
+  getTicket: async (ticketId: string): Promise<Ticket | null> => {
     try {
-      console.log('Fetching ticket:', ticketId); // Debug log
-      const docRef = doc(db, 'tickets', ticketId);
-      const docSnap = await getDoc(docRef);
+      const ticketDoc = await getDoc(doc(db, 'tickets', ticketId));
+      if (!ticketDoc.exists()) return null;
+      return transformTicketData(ticketDoc.id, ticketDoc.data());
+    } catch (error) {
+      logger.error('Error getting ticket:', error);
+      return null;
+    }
+  },
+
+  // Alias for getTicket to maintain API consistency
+  getTicketById: async (ticketId: string): Promise<Ticket | null> => {
+    return ticketService.getTicket(ticketId);
+  },
+
+  async getTicketsByUserId(userId: string): Promise<Ticket[]> {
+    try {
+      const q = query(collection(db, 'tickets'), where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
       
-      if (!docSnap.exists()) {
-        console.log('No ticket found'); // Debug log
-        return null;
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Ticket));
+    } catch (error) {
+      logger.error('Error fetching user tickets:', error);
+      throw new Error('Failed to fetch user tickets');
+    }
+  },
+
+  async validateTicket(ticketId: string): Promise<ValidationResult> {
+    try {
+      const ticketRef = doc(db, 'tickets', ticketId);
+      const ticketDoc = await getDoc(ticketRef);
+      
+      if (!ticketDoc.exists()) {
+        throw new Error('Ticket not found');
       }
 
-      const data = docSnap.data();
-      console.log('Ticket data:', data); // Debug log
+      const data = ticketDoc.data();
+      const validationsRemaining = data.quantity - data.usedCount;
+      const usedCount = data.usedCount || 0;
 
-      return {
-        id: docSnap.id,
-        ...data,
-        validationsRemaining: data.validationsRemaining || data.quantity,
-        validations: data.validations || [],
-        status: data.status || 'valid',
-        eventDetails: {
-          title: data.eventDetails?.title || '',
-          date: data.eventDetails?.date || '',
-          location: data.eventDetails?.location || '',
-          imageUrl: data.eventDetails?.imageUrl
-        }
-      } as Ticket;
-    } catch (error) {
-      console.error('Error fetching ticket:', error);
-      throw error;
-    }
-  },
+      if (validationsRemaining <= 0 || data.status !== 'valid') {
+        throw new Error('Ticket is no longer valid');
+      }
 
-  async getUserTickets(userId: string): Promise<Ticket[]> {
-    const q = query(collection(db, 'tickets'), where('userId', '==', userId));
-    const querySnapshot = await getDocs(q);
-    
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Ticket));
-  },
-
-  async validateTicket(ticketId: string, validationCount: number = 1, validatedBy?: string): Promise<boolean> {
-    const ticketRef = doc(db, 'tickets', ticketId);
-    
-    try {
-      await runTransaction(db, async (transaction) => {
-        const ticketDoc = await transaction.get(ticketRef);
-        if (!ticketDoc.exists()) {
-          throw new Error('Ticket not found');
-        }
-
-        const ticketData = ticketDoc.data();
-        
-        // Validation checks
-        if (ticketData.status === 'cancelled') {
-          throw new Error('Ticket has been cancelled');
-        }
-        if (ticketData.status === 'used') {
-          throw new Error('Ticket has already been fully used');
-        }
-        if (ticketData.validationsRemaining < validationCount) {
-          throw new Error(`Cannot validate ${validationCount} tickets. Only ${ticketData.validationsRemaining} validations remaining.`);
-        }
-
-        // Create a single validation entry for the batch
-        const newValidation = {
-          timestamp: new Date().toISOString(),
-          validatedBy: validatedBy || null,
-          count: validationCount,
-          batchId: `batch-${Date.now()}`
-        };
-
-        const newValidationsRemaining = ticketData.validationsRemaining - validationCount;
-        const currentUsedCount = ticketData.usedCount || 0;
-        const newUsedCount = currentUsedCount + validationCount;
-
-        // Validate total counts
-        if (newUsedCount > ticketData.quantity) {
-          throw new Error(`Cannot validate ${validationCount} tickets. Would exceed total quantity of ${ticketData.quantity}`);
-        }
-
-        // Determine new status
-        let newStatus: 'valid' | 'partially_used' | 'used';
-        if (newValidationsRemaining === 0) {
-          newStatus = 'used';
-        } else if (newUsedCount > 0) {
-          newStatus = 'partially_used';
-        } else {
-          newStatus = 'valid';
-        }
-
-        console.log('Batch Validation Details:', {
-          ticketId,
-          validationCount,
-          currentValidationsRemaining: ticketData.validationsRemaining,
-          newValidationsRemaining,
-          currentUsedCount,
-          newUsedCount,
-          newStatus,
-          batchId: newValidation.batchId
-        });
-
-        // Ensure all fields have non-undefined values
-        const validationSummary = {
-          total: ticketData.quantity,
-          used: newUsedCount,
-          remaining: newValidationsRemaining,
-          lastUpdated: new Date().toISOString(),
-          lastBatchValidation: {
-            count: validationCount,
-            timestamp: new Date().toISOString(),
-            batchId: newValidation.batchId
-          }
-        };
-
-        // Create update object with only defined values
-        const updateData = {
-          validationsRemaining: newValidationsRemaining,
-          status: newStatus,
-          validations: [...(ticketData.validations || []), newValidation],
-          usedCount: newUsedCount,
-          lastValidatedAt: new Date().toISOString(),
-          validationSummary
-        };
-
-        // Verify no undefined values
-        Object.entries(updateData).forEach(([key, value]) => {
-          if (value === undefined) {
-            console.error(`Found undefined value for key: ${key}`);
-            throw new Error(`Invalid data: ${key} is undefined`);
-          }
-        });
-
-        transaction.update(ticketRef, updateData);
+      await updateDoc(ticketRef, {
+        usedCount: usedCount + 1,
+        status: validationsRemaining === 1 ? 'used' : 'valid',
+        lastValidatedAt: serverTimestamp()
       });
 
-      return true;
+      return {
+        success: true,
+        message: 'Ticket validated successfully',
+        validationsRemaining: validationsRemaining - 1
+      };
     } catch (error) {
-      console.error('Error in batch ticket validation:', error);
-      throw error;
+      throw new Error('Failed to validate ticket');
     }
   },
 
@@ -212,7 +148,7 @@ export const ticketService = {
       }
       return ticketDoc.data().validations || [];
     } catch (error) {
-      console.error('Error getting validation history:', error);
+      logger.error('Error getting validation history:', error);
       throw error;
     }
   },
@@ -234,55 +170,61 @@ export const ticketService = {
   },
 
   subscribeToTicketUpdates(ticketId: string, callback: (ticket: Ticket) => void) {
-    const ticketRef = doc(db, 'tickets', ticketId);
-    return onSnapshot(ticketRef, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
-        const validationsRemaining = data.validationsRemaining ?? data.quantity;
-        
-        // Calculate usedCount based on status and stored value
-        let usedCount: number;
-        if (data.status === 'used') {
-          // If ticket is used, all tickets are considered used
-          usedCount = data.quantity;
-        } else {
-          // Otherwise use stored value or calculate from remaining
-          usedCount = data.usedCount ?? (data.quantity - validationsRemaining);
+    const unsubscribe = onSnapshot(
+      doc(db, 'tickets', ticketId),
+      (doc) => {
+        if (doc.exists()) {
+          const transformedTicket = this.transformTicketData(doc.id, doc.data());
+          callback(transformedTicket);
         }
-        
-        console.log('Raw ticket data:', data);
-        console.log('Firebase status:', data.status);
-        console.log('Validations remaining:', validationsRemaining);
-        console.log('Used count:', usedCount);
-        console.log('Total quantity:', data.quantity);
-        
-        const transformedTicket = {
-          id: doc.id,
-          ...data,
-          validationsRemaining: data.status === 'used' ? 0 : validationsRemaining,
-          validations: data.validations || [],
-          status: data.status || 'valid',
-          usedCount,
-          validationSummary: {
-            total: data.quantity,
-            used: usedCount,
-            remaining: data.status === 'used' ? 0 : validationsRemaining,
-            lastUpdated: data.lastValidatedAt || data.purchasedAt
-          },
-          eventDetails: {
-            title: data.eventDetails?.title || '',
-            date: data.eventDetails?.date || '',
-            location: data.eventDetails?.location || '',
-            imageUrl: data.eventDetails?.imageUrl
-          }
-        } as Ticket;
-
-        console.log('Transformed ticket:', transformedTicket);
-        callback(transformedTicket);
+      },
+      (error) => {
+        throw new Error('Failed to subscribe to ticket updates');
       }
-    },
-    (error) => {
-      console.error('Error in ticket subscription:', error);
-    });
-  }
+    );
+    return unsubscribe;
+  },
+
+  transformTicketData(id: string, data: any): Ticket {
+    if (!data) throw new Error('Invalid ticket data');
+
+    const transformedTicket: Ticket = {
+      id,
+      eventId: data.eventId,
+      userId: data.userId,
+      userEmail: data.userEmail,
+      eventDetails: data.eventDetails,
+      ticketNumber: data.ticketNumber,
+      quantity: data.quantity || 0,
+      validationsRemaining: data.validationsRemaining || 0,
+      usedCount: data.usedCount || 0,
+      status: data.status || 'valid',
+      purchasedAt: data.purchasedAt?.toDate?.() || data.purchasedAt,
+      lastValidatedAt: data.lastValidatedAt?.toDate?.() || data.lastValidatedAt,
+      amountPaid: data.amountPaid,
+      paymentMode: data.paymentMode,
+      transactionId: data.transactionId,
+      qrCode: data.qrCode || null,
+      validations: data.validations || [],
+      verificationCode: data.verificationCode
+    };
+
+    return transformedTicket;
+  },
+
+  async searchTickets(searchText: string): Promise<Ticket[]> {
+    try {
+      const ticketsRef = collection(db, 'tickets');
+      const q = query(
+        ticketsRef,
+        where('userEmail', '>=', searchText),
+        where('userEmail', '<=', searchText + '\uf8ff')
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
+    } catch (error) {
+      console.error('Error searching tickets:', error);
+      return [];
+    }
+  },
 };

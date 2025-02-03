@@ -18,6 +18,13 @@ import { SearchBar } from '../components/SearchBar';
 import { useInView } from 'react-intersection-observer';
 import debounce from 'lodash/debounce';
 import { useNavigate } from 'react-router-dom';
+import { logger } from '../../utils/logger';
+import { css } from 'styled-components';
+
+interface StyledProps {
+  $isScanning?: boolean;
+  $isActive?: boolean;
+}
 
 const Container = styled.div`
   min-height: 100vh;
@@ -106,6 +113,17 @@ const UsersGrid = styled.div`
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
     gap: 25px;
+    padding: 0 15px;
+    box-sizing: border-box;
+
+    > * {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 480px) {
+    padding: 0 10px;
+    gap: 20px;
   }
 `;
 
@@ -121,7 +139,7 @@ const UserCard = styled(motion.div)`
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   backdrop-filter: blur(10px);
   cursor: pointer;
-
+  
   &:hover {
     transform: translateY(-4px);
     box-shadow: 0 12px 40px rgba(31, 38, 135, 0.18);
@@ -359,6 +377,7 @@ const TicketsGrid = styled.div`
   gap: 25px;
   margin-top: 20px;
   width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
 
   @media (min-width: 1800px) {
     grid-template-columns: repeat(4, 1fr);
@@ -370,12 +389,27 @@ const TicketsGrid = styled.div`
 
   @media (min-width: 768px) and (max-width: 1399px) {
     grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
+    gap: 20px;
   }
 
   @media (max-width: 767px) {
     grid-template-columns: 1fr;
     gap: 15px;
+    margin-top: 15px;
+    width: 100%;
+    padding: 0 15px;
+    box-sizing: border-box;
+
+    > * {
+      width: 100% !important;
+      margin: 0 !important;
+    }
+  }
+
+  @media (max-width: 480px) {
+    padding: 0 10px;
+    gap: 12px;
+    margin-top: 12px;
   }
 `;
 
@@ -528,58 +562,43 @@ const StatusBadge = styled.span<{ status: Ticket['status'] }>`
   }
 `;
 
-const QRScannerSection = styled(motion.div)`
+const QRScannerWrapper = styled.div<StyledProps>`
   width: 100%;
-  margin: 20px auto;
+  max-width: 300px;
+  margin: 0 auto;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+  max-height: ${props => props.$isScanning ? '300px' : '0px'};
+  opacity: ${props => props.$isScanning ? 1 : 0};
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  @media (max-width: 768px) {
+    max-width: 250px;
+    max-height: ${props => props.$isScanning ? '250px' : '0px'};
+    border-radius: 12px;
+  }
 `;
 
-const QRScannerButton = styled(motion.button)`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: calc(100% - 30px);
-  max-width: 600px;
-  margin: 20px auto;
-  padding: 16px;
-  background: ${props => props.$isScanning ? 
-    'rgba(244, 67, 54, 0.2)' : 
-    'linear-gradient(135deg, #6e8efb, #4a6cf7)'};
-  color: ${props => props.$isScanning ? '#F44336' : 'white'};
-  border: ${props => props.$isScanning ? '1px solid #F44336' : 'none'};
-  border-radius: 12px;
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 1rem;
-  box-shadow: ${props => props.$isScanning ? 
-    '0 4px 12px rgba(244, 67, 54, 0.2)' : 
-    '0 4px 12px rgba(74, 108, 247, 0.2)'};
-  transition: all 0.3s ease;
+const QRScannerSection = motion(QRScannerWrapper);
 
-  &:hover {
-    background: ${props => props.$isScanning ? 
-      'rgba(244, 67, 54, 0.3)' : 
-      'linear-gradient(135deg, #4a6cf7, #6e8efb)'};
-    transform: translateY(-2px);
-  }
-
-  @media (max-width: 768px) {
-    width: calc(100% - 30px);
-    margin: 15px auto;
-    padding: 14px;
-    font-size: 0.95rem;
-  }
+const QRScannerContent = styled.div`
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
 `;
 
 const SearchWrapper = styled.div`
   width: 100%;
   padding: 0 15px;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
 
   @media (max-width: 768px) {
     padding: 0 15px;
@@ -593,6 +612,75 @@ const SearchWrapper = styled.div`
       width: 100%;
       box-sizing: border-box;
     }
+  }
+`;
+
+const QRScannerButton = styled(motion.button)<StyledProps>`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: ${props => props.$isScanning ? 
+    'rgba(255, 71, 87, 0.1)' : 
+    'linear-gradient(135deg, #6e8efb, #4a6cf7)'};
+  color: ${props => props.$isScanning ? '#ff4757' : 'white'};
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  box-shadow: ${props => props.$isScanning ? 
+    'none' : 
+    '0 4px 12px rgba(74, 108, 247, 0.2)'};
+  margin: 0 auto;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: ${props => props.$isScanning ? 
+      'none' : 
+      '0 6px 16px rgba(74, 108, 247, 0.3)'};
+  }
+
+  @media (max-width: 768px) {
+    padding: 10px 20px;
+    font-size: 0.95rem;
+  }
+`;
+
+const TicketStats = styled.div`
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+
+  @media (max-width: 768px) {
+    bottom: 15px;
+    right: 15px;
+  }
+`;
+
+const StatBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(74, 108, 247, 0.15);
+  border-radius: 20px;
+  font-size: 0.9rem;
+  color: #4a6cf7;
+
+  .count {
+    font-weight: 600;
+  }
+
+  .label {
+    opacity: 0.8;
+  }
+
+  @media (max-width: 768px) {
+    padding: 4px 10px;
+    font-size: 0.85rem;
   }
 `;
 
@@ -613,6 +701,8 @@ const TicketCard = styled(motion.div)<{ $isSelected?: boolean }>`
   flex-direction: column;
   transform: translateZ(0);
   will-change: transform;
+  box-sizing: border-box;
+  width: 100%;
   
   &:hover {
     background: ${props => props.$isSelected ? 
@@ -625,9 +715,40 @@ const TicketCard = styled(motion.div)<{ $isSelected?: boolean }>`
 
   @media (max-width: 768px) {
     padding: 20px;
-    margin: 0;
-    width: calc(100% - 30px);
-    margin: 0 auto;
+  }
+
+  @media (max-width: 480px) {
+    padding: 15px;
+    border-radius: 12px;
+    
+    ${TicketTitle} {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+    
+    ${TicketDetails} {
+      gap: 8px;
+      margin: 10px 0 40px;
+      
+      .label {
+        font-size: 0.75rem;
+        margin-bottom: 2px;
+      }
+      
+      .value {
+        font-size: 0.85rem;
+      }
+    }
+    
+    ${TicketStats} {
+      bottom: 12px;
+      right: 12px;
+    }
+    
+    ${StatBadge} {
+      padding: 3px 8px;
+      font-size: 0.8rem;
+    }
   }
 `;
 
@@ -685,60 +806,61 @@ const ValidationCloseButton = styled(motion.button)`
 
 const NoResults = styled(motion.div)`
   text-align: center;
-  padding: 40px;
+  padding: 40px 20px;
   color: ${props => props.theme.textSecondary};
   font-size: 1.1rem;
   width: 100%;
+  max-width: calc(100vw - 40px);
+  margin: 20px auto;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 12px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
 
   svg {
     margin-bottom: 15px;
     opacity: 0.7;
+    font-size: 48px;
+  }
+
+  p {
+    margin: 0;
+    max-width: 80%;
+    line-height: 1.5;
   }
 
   @media (max-width: 768px) {
-    padding: 30px;
+    padding: 30px 15px;
     font-size: 1rem;
-  }
-`;
+    margin: 15px auto;
+    min-height: 180px;
+    max-width: calc(100vw - 30px);
 
-const TicketStats = styled.div`
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
+    svg {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
 
-  @media (max-width: 768px) {
-    bottom: 15px;
-    right: 15px;
-  }
-`;
-
-const StatBadge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 12px;
-  background: rgba(74, 108, 247, 0.15);
-  border-radius: 20px;
-  font-size: 0.9rem;
-  color: #4a6cf7;
-
-  .count {
-    font-weight: 600;
+    p {
+      max-width: 90%;
+    }
   }
 
-  .label {
-    opacity: 0.8;
-  }
-
-  @media (max-width: 768px) {
-    padding: 4px 10px;
-    font-size: 0.85rem;
+  @media (max-width: 480px) {
+    padding: 25px 15px;
+    min-height: 160px;
+    
+    svg {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
   }
 `;
 
@@ -1057,6 +1179,104 @@ const LoadingAnimation = () => (
   </LoadMoreContainer>
 );
 
+const UserAvatar = styled.div<{ $imageUrl?: string }>`
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  background: ${props => props.$imageUrl ? 
+    `url(${props.$imageUrl}) no-repeat center/cover` : 
+    'linear-gradient(135deg, #6e8efb, #4a6cf7)'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  color: white;
+  font-weight: 600;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    width: 40px;
+    height: 40px;
+    font-size: 1.1rem;
+  }
+`;
+
+const getInitials = (email: string) => {
+  return email
+    .split('@')[0]
+    .split('.')
+    .map(part => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+};
+
+const ScanButton = styled(motion.button)`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #6e8efb, #4a6cf7);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(74, 108, 247, 0.2);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(74, 108, 247, 0.3);
+  }
+
+  @media (max-width: 768px) {
+    padding: 10px 16px;
+    font-size: 0.95rem;
+  }
+`;
+
+const ScannerOverlay = styled(motion.div)`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+`;
+
+const ScannerContainer = styled(motion.div)`
+  width: 100%;
+  max-width: 500px;
+  background: ${props => props.theme.background};
+  border-radius: 20px;
+  padding: 30px;
+  position: relative;
+`;
+
+const CloseButton = styled(motion.button)`
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: ${props => props.theme.text};
+  cursor: pointer;
+  z-index: 10;
+`;
+
 const AdminScreen: React.FC = () => {
   const { selectedModel } = useAI();
   const [activeTab, setActiveTab] = useState<TabType>('users');
@@ -1226,12 +1446,30 @@ const AdminScreen: React.FC = () => {
 
   // Debounced search handlers
   const debouncedUserSearch = useMemo(
-    () => debounce((searchText: string) => fetchUsers(searchText, true), 500),
+    () => debounce(async (searchText: string) => {
+      try {
+        setLoading(true);
+        await fetchUsers(searchText, true);
+        setLoading(false);
+      } catch (error) {
+        logger.error('Error searching users:', error);
+        setLoading(false);
+      }
+    }, 300),
     [fetchUsers]
   );
 
   const debouncedTicketSearch = useMemo(
-    () => debounce((searchText: string) => fetchTickets(searchText, true), 500),
+    () => debounce(async (searchText: string) => {
+      try {
+        setLoading(true);
+        await fetchTickets(searchText, true);
+        setLoading(false);
+      } catch (error) {
+        logger.error('Error searching tickets:', error);
+        setLoading(false);
+      }
+    }, 300),
     [fetchTickets]
   );
 
@@ -1349,6 +1587,14 @@ const AdminScreen: React.FC = () => {
     }
   };
 
+  const handleSearch = useCallback((query: string) => {
+    if (activeTab === 'users') {
+      void debouncedUserSearch(query);
+    } else {
+      void debouncedTicketSearch(query);
+    }
+  }, [activeTab, debouncedUserSearch, debouncedTicketSearch]);
+
   const handleScan = async (data: string | null) => {
     if (!data) return;
 
@@ -1361,19 +1607,13 @@ const AdminScreen: React.FC = () => {
         return;
       }
 
-      const db = getFirestore();
-      const ticketsRef = collection(db, 'tickets');
+      // Get the ticket from the service
+      const ticket = await ticketService.getTicketById(qrData.ticketId);
       
-      // Query Firebase directly for this specific ticket
-      const ticketDoc = doc(db, 'tickets', qrData.ticketId);
-      const ticketSnapshot = await getDoc(ticketDoc);
-      
-      if (!ticketSnapshot.exists()) {
+      if (!ticket) {
         toast.error('Ticket not found');
         return;
       }
-
-      const ticket = { id: ticketSnapshot.id, ...ticketSnapshot.data() } as Ticket;
 
       // Check ticket status
       if (ticket.status === 'used') {
@@ -1403,7 +1643,7 @@ const AdminScreen: React.FC = () => {
       });
 
     } catch (error) {
-      console.error('Error scanning ticket:', error);
+      logger.error('Error scanning ticket:', error);
       toast.error('Invalid QR code', {
         duration: 3000,
         icon: '❌'
@@ -1446,6 +1686,11 @@ const AdminScreen: React.FC = () => {
     }
   };
 
+  const handleValidationComplete = () => {
+    setSelectedTicket(null);
+    // Refresh ticket list if needed
+  };
+
   const renderContent = () => {
     if (activeTab === 'users') {
       return (
@@ -1456,6 +1701,15 @@ const AdminScreen: React.FC = () => {
               onSearch={debouncedUserSearch}
               isLoading={isSearching}
             />
+            <QRScannerButton
+              onClick={() => setIsScannerOpen(!isScannerOpen)}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              $isScanning={isScannerOpen}
+            >
+              <FiCamera size={18} />
+              {isScannerOpen ? 'Stop Scanning' : 'Scan Ticket'}
+            </QRScannerButton>
           </SearchWrapper>
           
           <AnimatePresence mode="wait">
@@ -1505,19 +1759,9 @@ const AdminScreen: React.FC = () => {
                               ID: {user.uid.substring(0, 8)}...
                             </p>
                           </UserInfo>
-                          <UserActionButton
-                            $variant="danger"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteUser(user);
-                            }}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            disabled={user.role === 'admin'}
-                            title={user.role === 'admin' ? "Can't delete admin users" : "Delete user"}
-                          >
-                            <FiTrash2 size={18} />
-                          </UserActionButton>
+                          <UserAvatar $imageUrl={user.profilePhoto}>
+                            {!user.profilePhoto && getInitials(user.email)}
+                          </UserAvatar>
                         </UserCard>
                       </motion.div>
                     );
@@ -1537,48 +1781,41 @@ const AdminScreen: React.FC = () => {
 
     return (
       <motion.div {...pageTransition}>
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <SearchWrapper>
-            <SearchBar
-              placeholder="Search tickets by number, event, or user..."
-              onSearch={debouncedTicketSearch}
-              isLoading={isSearching}
-            />
-          </SearchWrapper>
-
+        <SearchWrapper>
+          <SearchBar
+            placeholder="Search tickets by number, event, or user..."
+            onSearch={handleSearch}
+            isLoading={isSearching}
+          />
           <QRScannerButton
             onClick={() => setIsScannerOpen(!isScannerOpen)}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             $isScanning={isScannerOpen}
           >
-            <FiCamera size={20} />
-            {isScannerOpen ? 'Stop Scanning' : 'Scan Ticket QR Code'}
+            <FiCamera size={18} />
+            {isScannerOpen ? 'Stop Scanning' : 'Scan Ticket'}
           </QRScannerButton>
+        </SearchWrapper>
 
-          <AnimatePresence>
-            {isScannerOpen && (
-              <QRScannerSection
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <QRScanner
-                  onScan={handleScan}
-                  onError={(error) => {
-                    if (!error.includes('No QR code found')) {
-                      toast.error('Camera error. Please try again.');
-                    }
-                  }}
+        <AnimatePresence>
+          {isScannerOpen && (
+            <QRScannerSection
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              $isScanning={isScannerOpen}
+            >
+              <QRScannerContent>
+                <QRScanner 
+                  onScan={handleScan} 
+                  onError={(error) => logger.error('QR Scanner error:', error)} 
                 />
-              </QRScannerSection>
-            )}
-          </AnimatePresence>
-        </motion.div>
+              </QRScannerContent>
+            </QRScannerSection>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence mode="wait">
           {loading ? (
@@ -1612,7 +1849,6 @@ const AdminScreen: React.FC = () => {
                 {tickets.map((ticket, index) => {
                   const usagePercentage = (ticket.usedCount / ticket.quantity) * 100;
                   const isSelected = selectedTicket?.id === ticket.id;
-                  // Add additional key uniqueness by combining id with index
                   const uniqueKey = `${ticket.id}_${index}`;
                   
                   return (
@@ -1721,24 +1957,20 @@ const AdminScreen: React.FC = () => {
     );
   };
 
+  const MotionContainer = styled(motion.div)`
+    width: 100%;
+    height: 100%;
+  `;
+
   return (
     <Container>
       <BackButton />
       <AdminCard
-        as={motion.div}
-        {...pageTransition}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
       >
-        <TabContainer
-          as={motion.div}
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{
-            type: "spring",
-            stiffness: 400,
-            damping: 25,
-            mass: 1
-          }}
-        >
+        <TabContainer>
           <Tab
             as={motion.button}
             variants={tabVariants}
@@ -1785,10 +2017,9 @@ const AdminScreen: React.FC = () => {
       <AnimatePresence>
         {selectedTicket && (
           <ValidationOverlay
-            variants={overlayTransition}
-            initial="initial"
-            animate="animate"
-            exit="exit"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           >
             <ValidationCloseButton
               onClick={() => setSelectedTicket(null)}
@@ -1799,20 +2030,7 @@ const AdminScreen: React.FC = () => {
             </ValidationCloseButton>
             <TicketValidation
               ticket={selectedTicket}
-              onValidationComplete={() => {
-                if (selectedTicket.id) {
-                  Promise.all([
-                    ticketService.getTicket(selectedTicket.id).then(setSelectedTicket),
-                    ticketService.getAllTickets().then((newTickets) => {
-                      setTickets(
-                        newTickets.sort((a, b) => 
-                        new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime()
-                    )
-                      );
-                    })
-                  ]);
-                }
-              }}
+              onValidationComplete={handleValidationComplete}
             />
           </ValidationOverlay>
         )}

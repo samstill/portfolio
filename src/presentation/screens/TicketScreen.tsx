@@ -9,6 +9,8 @@ import { ticketService } from '../../firebase/services/ticketService';
 import { Ticket } from '../../domain/entities/Ticket';
 import BackButton from '../components/BackButton';
 import { FiClock, FiCheck, FiX, FiUser, FiShare2 } from 'react-icons/fi';
+import createTicketPDF from '../../shared/utils/pdfGenerator';
+import logger from '../../shared/utils/logger';
 
 const Container = styled.div`
   min-height: 100vh;
@@ -27,18 +29,22 @@ const TicketCard = styled(motion.div)`
 `;
 
 const QRCodeContainer = styled.div`
-  width: 200px;
-  height: 200px;
+  width: 250px;
+  height: 250px;
   margin: 20px auto;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.1);
+  padding: 15px;
+  background: white;
   border-radius: 12px;
-  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   
   img {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    border-radius: 8px;
   }
 `;
 
@@ -302,34 +308,71 @@ const TicketScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!ticketId) {
-      setError('No ticket ID provided');
-      setLoading(false);
-      return;
-    }
-
-    // Subscribe to real-time ticket updates
     const unsubscribe = ticketService.subscribeToTicketUpdates(ticketId, (updatedTicket) => {
-      console.log('Received ticket update:', updatedTicket); // Debug log
       setTicket(updatedTicket);
-      setLoading(false);
     });
 
     return () => {
-      console.log('Unsubscribing from updates'); // Debug log
       unsubscribe();
     };
   }, [ticketId]);
 
+  useEffect(() => {
+    const fetchTicket = async () => {
+      try {
+        const ticketData = await ticketService.getTicket(ticketId);
+        setTicket(ticketData);
+        setLoading(false);
+      } catch (error) {
+        toast.error('Failed to load ticket details');
+        setLoading(false);
+      }
+    };
+
+    fetchTicket();
+  }, [ticketId]);
+
   const handleShare = async () => {
     if (!ticket) return;
+    
     try {
-      await navigator.share({
-        title: `Ticket for ${ticket.eventDetails.title}`,
-        text: `My ticket for ${ticket.eventDetails.title}`,
-        url: window.location.href
+      // Show loading toast
+      const loadingToast = toast.loading('Generating ticket PDF...');
+      
+      // Generate PDF
+      const pdfBlob = await createTicketPDF(ticket);
+      
+      // Create a file from the blob
+      const file = new File([pdfBlob], `${ticket.eventDetails.title}-Ticket.pdf`, {
+        type: 'application/pdf'
       });
+
+      // Check if native sharing is supported
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        // Use native sharing
+        await navigator.share({
+          title: `Ticket for ${ticket.eventDetails.title}`,
+          text: `My ticket for ${ticket.eventDetails.title}`,
+          files: [file]
+        });
+      } else {
+        // Fallback to download
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${ticket.eventDetails.title}-Ticket.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        toast.success('Ticket PDF downloaded successfully!');
+      }
+      
+      // Clear loading toast
+      toast.dismiss(loadingToast);
     } catch (error) {
+      logger.error('Error sharing ticket:', error);
       toast.error('Unable to share ticket');
     }
   };
@@ -381,15 +424,6 @@ const TicketScreen: React.FC = () => {
   const usagePercentage = Math.min((usedCount / ticket.quantity) * 100, 100);
   const status = ticket.status;
 
-  console.log('Ticket Screen Status:', {
-    validationsRemaining: ticket.validationsRemaining,
-    quantity: ticket.quantity,
-    usedCount,
-    firebaseStatus: ticket.status,
-    status,
-    usagePercentage
-  });
-
   return (
     <Container>
       <BackButton />
@@ -398,10 +432,21 @@ const TicketScreen: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        {ticket.qrCode && (
+        {ticket.qrCode ? (
           <QRCodeContainer>
-            <img src={ticket.qrCode} alt="Ticket QR Code" />
+            <img 
+              src={ticket.qrCode} 
+              alt="Ticket QR Code"
+              onError={(e) => {
+                logger.error('Error loading QR code');
+                e.currentTarget.style.display = 'none';
+              }}
+            />
           </QRCodeContainer>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <p>QR Code not available</p>
+          </div>
         )}
 
         <TicketInfo>

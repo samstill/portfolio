@@ -7,6 +7,7 @@ import {
   Navigate
 } from 'react-router-dom';
 import styled, { StyleSheetManager, keyframes } from 'styled-components';
+import { HelmetProvider } from 'react-helmet-async';
 import MeshGradientBackground from './presentation/components/MeshGradientBackground';
 import { ThemeProvider } from './shared/context/ThemeContext';
 import { AuthProvider } from './shared/context/AuthContext';
@@ -35,6 +36,14 @@ const ValidateTicketScreen = React.lazy(() => import('./presentation/screens/Val
 const UnauthorizedScreen = React.lazy(() => import('./presentation/screens/UnauthorizedScreen'));
 const PaymentErrorScreen = React.lazy(() => import('./presentation/screens/PaymentErrorScreen'));
 const UserDetailScreen = React.lazy(() => import('./presentation/screens/UserDetailScreen'));
+const UserTicketsScreen = React.lazy(() => import('./presentation/screens/UserTicketsScreen'));
+const UserTransactionsScreen = React.lazy(() => import('./presentation/screens/UserTransactionsScreen'));
+
+// Lazy load legal screens
+const TermsConditionsScreen = React.lazy(() => import('./presentation/screens/legal/TermsConditionsScreen'));
+const PrivacyPolicyScreen = React.lazy(() => import('./presentation/screens/legal/PrivacyPolicyScreen'));
+const RefundPolicyScreen = React.lazy(() => import('./presentation/screens/legal/RefundPolicyScreen'));
+const AboutUsScreen = React.lazy(() => import('./presentation/screens/legal/AboutUsScreen'));
 
 const AppContainer = styled.div`
   position: relative;
@@ -234,6 +243,40 @@ const router = createBrowserRouter(
         }
       />
       <Route
+        path="admin/users/:userId/tickets"
+        element={
+          <AdminRoute>
+            <Suspense fallback={
+              <LoadingSpinner>
+                <SpinnerWrapper>
+                  <Spinner />
+                </SpinnerWrapper>
+                <LoadingText>Loading...</LoadingText>
+              </LoadingSpinner>
+            }>
+              <UserTicketsScreen />
+            </Suspense>
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="admin/users/:userId/transactions"
+        element={
+          <AdminRoute>
+            <Suspense fallback={
+              <LoadingSpinner>
+                <SpinnerWrapper>
+                  <Spinner />
+                </SpinnerWrapper>
+                <LoadingText>Loading...</LoadingText>
+              </LoadingSpinner>
+            }>
+              <UserTransactionsScreen />
+            </Suspense>
+          </AdminRoute>
+        }
+      />
+      <Route
         path="events/create"
         element={
           <AdminRoute>
@@ -405,12 +448,75 @@ const router = createBrowserRouter(
           <NotFoundScreen />
         </Suspense>
       } />
+      <Route path="legal">
+        <Route
+          path="terms-conditions"
+          element={
+            <Suspense fallback={
+              <LoadingSpinner>
+                <SpinnerWrapper>
+                  <Spinner />
+                </SpinnerWrapper>
+                <LoadingText>Loading...</LoadingText>
+              </LoadingSpinner>
+            }>
+              <TermsConditionsScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="privacy-policy"
+          element={
+            <Suspense fallback={
+              <LoadingSpinner>
+                <SpinnerWrapper>
+                  <Spinner />
+                </SpinnerWrapper>
+                <LoadingText>Loading...</LoadingText>
+              </LoadingSpinner>
+            }>
+              <PrivacyPolicyScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="refund-policy"
+          element={
+            <Suspense fallback={
+              <LoadingSpinner>
+                <SpinnerWrapper>
+                  <Spinner />
+                </SpinnerWrapper>
+                <LoadingText>Loading...</LoadingText>
+              </LoadingSpinner>
+            }>
+              <RefundPolicyScreen />
+            </Suspense>
+          }
+        />
+        <Route
+          path="about-us"
+          element={
+            <Suspense fallback={
+              <LoadingSpinner>
+                <SpinnerWrapper>
+                  <Spinner />
+                </SpinnerWrapper>
+                <LoadingText>Loading...</LoadingText>
+              </LoadingSpinner>
+            }>
+              <AboutUsScreen />
+            </Suspense>
+          }
+        />
+      </Route>
     </Route>
   ),
   {
     basename: '/',
     future: {
-      v7_relativeSplatPath: true
+      v7_relativeSplatPath: true,
+      v7_startTransition: true
     }
   }
 );
@@ -420,20 +526,22 @@ const App: React.FC = () => {
     <StyleSheetManager
       shouldForwardProp={(prop) => !['margin'].includes(prop)}
     >
-      <ThemeProvider>
-        <AuthProvider>
-          <ProfileProvider>
-            <AIProvider>
-              <AppContainer>
-                <MeshGradientBackground />
-                <ContentContainer>
-                  <RouterProvider router={router} />
-                </ContentContainer>
-              </AppContainer>
-            </AIProvider>
-          </ProfileProvider>
-        </AuthProvider>
-      </ThemeProvider>
+      <HelmetProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <ProfileProvider>
+              <AIProvider>
+                <AppContainer>
+                  <MeshGradientBackground />
+                  <ContentContainer>
+                    <RouterProvider router={router} />
+                  </ContentContainer>
+                </AppContainer>
+              </AIProvider>
+            </ProfileProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </HelmetProvider>
     </StyleSheetManager>
   );
 };

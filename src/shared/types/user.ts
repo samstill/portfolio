@@ -1,4 +1,4 @@
-export type UserRole = 'user' | 'admin';
+export type UserRole = 'admin' | 'user';
 
 export interface UserData {
   uid: string;
@@ -6,4 +6,6 @@ export interface UserData {
   role: UserRole;
   createdAt: string;
   lastLogin: string;
+  displayName?: string;
+  profilePhoto?: string;
 } 

@@ -3,6 +3,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { FiCamera, FiLoader } from 'react-icons/fi';
+import { toast } from 'react-hot-toast';
 
 const ScannerContainer = styled(motion.div)`
   width: 100%;
@@ -112,10 +113,25 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScan, onError }) => {
   const [isMounted, setIsMounted] = useState(false);
   const scannerDivId = 'qr-scanner';
 
-  // First effect: Set mounted state
+  // Cleanup function
+  const cleanup = async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        scannerRef.current = null;
+      } catch (error) {
+        console.error('Error stopping scanner:', error);
+      }
+    }
+  };
+
+  // First effect: Set mounted state and cleanup
   useEffect(() => {
     setIsMounted(true);
-    return () => setIsMounted(false);
+    return () => {
+      setIsMounted(false);
+      cleanup();
+    };
   }, []);
 
   // Second effect: Get available cameras
@@ -124,34 +140,23 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScan, onError }) => {
 
     const getCameras = async () => {
       try {
-        const devices = await Html5Qrcode.getCameras();
-        if (devices && devices.length > 0) {
-          console.log('Available cameras:', devices);
-          // Filter out virtual cameras
-          const realCameras = devices.filter(device => 
-            !device.label.toLowerCase().includes('virtual') &&
-            !device.label.toLowerCase().includes('obs')
-          );
-          
-          if (realCameras.length === 0) {
-            setCameraError('No physical cameras found on your device');
-            return;
-          }
-
-          setCameras(realCameras);
-          // Try to find back camera first
-          const backCameraIndex = realCameras.findIndex(device => 
-            device.label.toLowerCase().includes('back') || 
-            device.label.toLowerCase().includes('environment')
-          );
-          setCurrentCameraIndex(backCameraIndex !== -1 ? backCameraIndex : 0);
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput')
+          .map(device => ({
+            id: device.deviceId,
+            label: device.label || `Camera ${device.deviceId.slice(0, 4)}`
+          }));
+        
+        setCameras(videoDevices);
+        if (videoDevices.length > 0) {
+          setCurrentCameraIndex(0);
         } else {
           setCameraError('No cameras found on your device');
         }
+        setIsInitializing(false);
       } catch (err) {
-        console.error('Error getting cameras:', err);
-        setCameraError('Unable to access camera. Please ensure you have granted camera permissions.');
-      } finally {
+        console.error('Error accessing cameras:', err);
+        setCameraError('Failed to access camera devices. Please check permissions.');
         setIsInitializing(false);
       }
     };
@@ -165,6 +170,8 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScan, onError }) => {
 
     const initializeScanner = async () => {
       try {
+        await cleanup(); // Stop any existing scanner
+
         // Check if we have cameras and valid index
         if (!cameras.length || currentCameraIndex >= cameras.length) {
           throw new Error('No valid camera found');
@@ -174,12 +181,6 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScan, onError }) => {
         const camera = cameras[currentCameraIndex];
         if (!camera?.id) {
           throw new Error('Invalid camera ID');
-        }
-
-        // Stop existing scanner if any
-        if (scannerRef.current) {
-          await scannerRef.current.stop();
-          scannerRef.current = null;
         }
 
         // Create new scanner instance
@@ -211,20 +212,22 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScan, onError }) => {
             }
           },
           (errorMessage) => {
-            if (!errorMessage.includes('No QR code found')) {
-              console.error('Scanner error:', errorMessage);
-              onError?.(errorMessage);
+            // Only report non-QR code errors
+            if (typeof onError === 'function' && !errorMessage.includes('No QR code found')) {
+              onError(errorMessage);
             }
           }
         );
 
         setCameraError(null);
+        setIsInitializing(false);
 
       } catch (error) {
         console.error('Scanner initialization error:', error);
         setCameraError(
           'Unable to start camera. Please ensure you have granted camera permissions and try again.'
         );
+        setIsInitializing(false);
       }
     };
 
@@ -232,10 +235,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScan, onError }) => {
 
     return () => {
       clearTimeout(timer);
-      if (scannerRef.current) {
-        scannerRef.current.stop()
-          .catch(error => console.error('Error stopping scanner:', error));
-      }
+      cleanup();
     };
   }, [cameras, currentCameraIndex, onScan, onError, isMounted]);
 

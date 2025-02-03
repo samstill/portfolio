@@ -130,10 +130,10 @@ const MyTicketsScreen: React.FC = () => {
 
   useEffect(() => {
     const fetchTickets = async () => {
-      if (!currentUser?.uid) return;
       try {
-        const userTickets = await ticketService.getUserTickets(currentUser.uid);
-        setTickets(userTickets.sort((a, b) => 
+        if (!currentUser?.uid) return;
+        const fetchedTickets = await ticketService.getTicketsByUserId(currentUser.uid);
+        setTickets(fetchedTickets.sort((a, b) => 
           new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime()
         ));
       } catch (error) {

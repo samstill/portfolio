@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import styled, { createGlobalStyle } from 'styled-components';
 import { Link } from 'react-router-dom';
-import { FiLogIn, FiCalendar, FiSend, FiUserPlus, FiCheck, FiChevronDown } from 'react-icons/fi';
+import { FiLogIn, FiCalendar, FiSend, FiUserPlus, FiCheck, FiChevronDown, FiFileText, FiShield, FiInfo } from 'react-icons/fi';
+import { MdCurrencyRupee } from 'react-icons/md';
 import { useAuth } from '../../shared/context/AuthContext';
 import { Parallax, ParallaxLayer } from '@react-spring/parallax';
 import Logo from '../components/Logo';
@@ -296,6 +297,51 @@ const SuccessMessage = styled(motion.div)`
   }
 `;
 
+const Footer = styled.footer`
+  position: relative;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  margin-top: auto;
+  width: 100%;
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    padding: 12px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+`;
+
+const LegalLink = styled(Link)`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: ${props => props.theme.text};
+  text-decoration: none;
+  font-size: 0.9rem;
+  opacity: 0.8;
+  transition: all 0.3s ease;
+  padding: 6px 12px;
+  border-radius: 8px;
+  
+  &:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+  }
+
+  @media (max-width: 768px) {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+  }
+`;
+
 const HomeScreen: React.FC = () => {
   useDocumentTitle('Home');
   const { currentUser } = useAuth();
@@ -442,8 +488,9 @@ const HomeScreen: React.FC = () => {
             speed={0.2}
             style={{ 
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center', // Fixed: changed from justify-content to justifyContent
+              justifyContent: 'center',
             }}
           >
             <ContactSection ref={contactRef} $isVisible={isContactVisible}>
@@ -483,6 +530,24 @@ const HomeScreen: React.FC = () => {
                 </AnimatePresence>
               </ContactCard>
             </ContactSection>
+            <Footer>
+              <LegalLink to="/legal/terms-conditions">
+                <FiFileText size={16} />
+                Terms
+              </LegalLink>
+              <LegalLink to="/legal/privacy-policy">
+                <FiShield size={16} />
+                Privacy
+              </LegalLink>
+              <LegalLink to="/legal/refund-policy">
+                <MdCurrencyRupee size={16} />
+                Refunds
+              </LegalLink>
+              <LegalLink to="/legal/about-us">
+                <FiInfo size={16} />
+                About Us
+              </LegalLink>
+            </Footer>
           </ParallaxLayer>
         </Parallax>
         <ScrollFadeWrapper $scrollY={scrollY}>
