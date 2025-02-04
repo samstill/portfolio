@@ -22,6 +22,7 @@ const HomeScreen = React.lazy(() => import('./presentation/screens/HomeScreen'))
 const NotFoundScreen = React.lazy(() => import('./presentation/screens/NotFoundScreen'));
 const LoginScreen = React.lazy(() => import('./presentation/screens/LoginScreen'));
 const SignUpScreen = React.lazy(() => import('./presentation/screens/SignUpScreen'));
+const ResetPasswordScreen = React.lazy(() => import('./presentation/screens/ResetPasswordScreen'));
 const EventsScreen = React.lazy(() => import('./presentation/screens/EventsScreen'));
 const ProfileScreen = React.lazy(() => import('./presentation/screens/ProfileScreen'));
 const AdminScreen = React.lazy(() => import('./presentation/screens/AdminScreen'));
@@ -170,6 +171,23 @@ const router = createBrowserRouter(
               </LoadingSpinner>
             }>
               <SignUpScreen />
+            </Suspense>
+          </PublicOnlyRoute>
+        }
+      />
+      <Route
+        path="reset-password"
+        element={
+          <PublicOnlyRoute>
+            <Suspense fallback={
+              <LoadingSpinner>
+                <SpinnerWrapper>
+                  <Spinner />
+                </SpinnerWrapper>
+                <LoadingText>Loading...</LoadingText>
+              </LoadingSpinner>
+            }>
+              <ResetPasswordScreen />
             </Suspense>
           </PublicOnlyRoute>
         }

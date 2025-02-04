@@ -23,6 +23,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../../../firebase';
 import { toast } from 'react-hot-toast';
 import styled from 'styled-components';
+import Avatar from '../common/Avatar';
 
 const NavbarContainer = styled(motion.nav)`
   position: fixed;
@@ -216,13 +217,11 @@ const AvatarButton = styled(motion.button)`
   border-radius: 8px;
   color: ${props => props.theme.text};
   cursor: pointer;
-`;
+  transition: all 0.3s ease;
 
-const Avatar = styled.img`
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  object-fit: cover;
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
 `;
 
 const NavAction = styled(motion.button)`
@@ -336,7 +335,11 @@ export const EventsNavbar: React.FC<EventsNavbarProps> = ({ unreadMessages = 0 }
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <Avatar src={profileImage || '/default-avatar.png'} alt="User" />
+            <Avatar 
+              imageUrl={profileImage}
+              name={currentUser?.email || ''}
+              size="32px"
+            />
           </AvatarButton>
         </NavButtons>
 

@@ -22,6 +22,7 @@ import {
 import { EventsFilter } from '../components/events/EventsFilter';
 import styled from 'styled-components';
 import { eventService } from '../../firebase/services/eventService';
+import Avatar from '../components/common/Avatar';
 
 const MenuOverlay = styled(motion.div)`
   position: fixed;
@@ -139,6 +140,18 @@ interface FilterState {
   priceRange: { min: number | null; max: number | null };
   sortOrder: string;
 }
+
+const AvatarWrapper = styled.div`
+  position: relative;
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    width: 90px;
+    height: 90px;
+  }
+`;
 
 const EventsScreen: React.FC = () => {
   const { currentUser, isAdmin } = useAuth();
