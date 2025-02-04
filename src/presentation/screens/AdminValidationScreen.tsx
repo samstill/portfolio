@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
-import { FiMinus, FiPlus, FiCheck, FiX } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiCheck, FiX, FiClock } from 'react-icons/fi';
 import { ticketService } from '../../firebase/services/ticketService';
 import { Ticket } from '../../domain/entities/Ticket';
 
@@ -87,6 +87,74 @@ const ValidateButton = styled(motion.button)`
   }
 `;
 
+const ValidationHistory = styled.div`
+  margin-top: 20px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+
+  h4 {
+    margin: 0 0 15px;
+    color: ${props => props.theme.textSecondary};
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+`;
+
+const HistoryItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.9rem;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  .validation-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+
+    @media (max-width: 480px) {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+    }
+  }
+
+  .count {
+    color: ${props => props.theme.primary};
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .timestamp {
+    color: ${props => props.theme.textSecondary};
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  .validator {
+    font-size: 0.85rem;
+    color: ${props => props.theme.textSecondary};
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    word-break: break-all;
+
+    .email {
+      color: ${props => props.theme.text};
+      font-weight: 500;
+    }
+  }
+`;
+
 interface ValidationProps {
   ticket: Ticket;
   onValidationComplete: () => void;
@@ -95,26 +163,62 @@ interface ValidationProps {
 const TicketValidation: React.FC<ValidationProps> = ({ ticket, onValidationComplete }) => {
   const [validationCount, setValidationCount] = useState(1);
   const [isValidating, setIsValidating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset validation count when ticket changes
+  useEffect(() => {
+    setValidationCount(1);
+    setError(null);
+  }, [ticket.id]);
 
   const handleIncrement = () => {
+    setError(null);
     if (validationCount < ticket.validationsRemaining) {
       setValidationCount(prev => prev + 1);
     }
   };
 
   const handleDecrement = () => {
+    setError(null);
     if (validationCount > 1) {
       setValidationCount(prev => prev - 1);
     }
   };
 
   const handleValidate = async () => {
+    setError(null);
+
+    // Validate inputs
+    if (!ticket.id) {
+      setError('Invalid ticket');
+      return;
+    }
+
+    if (validationCount > ticket.validationsRemaining) {
+      setError(`Cannot validate ${validationCount} tickets. Only ${ticket.validationsRemaining} remaining.`);
+      return;
+    }
+
+    if (validationCount < 1) {
+      setError('Must validate at least 1 ticket');
+      return;
+    }
+
     try {
       setIsValidating(true);
-      await ticketService.validateTicket(ticket.id, validationCount);
-      toast.success(`Successfully validated ${validationCount} ticket${validationCount > 1 ? 's' : ''}`);
-      onValidationComplete();
-    } catch (error) {
+      const result = await ticketService.validateTicket(ticket.id, validationCount);
+      
+      if (result.success) {
+        toast.success(result.message);
+        // Reset validation count after successful validation
+        setValidationCount(1);
+        onValidationComplete();
+      } else {
+        setError('Validation failed');
+      }
+    } catch (error: any) {
+      console.error('Validation error:', error);
+      setError(error.message || 'Failed to validate tickets');
       toast.error(error.message || 'Failed to validate tickets');
     } finally {
       setIsValidating(false);
@@ -140,12 +244,25 @@ const TicketValidation: React.FC<ValidationProps> = ({ ticket, onValidationCompl
         </SummaryRow>
       </ValidationSummary>
 
+      {error && (
+        <div style={{ 
+          color: '#ff4d4d', 
+          background: 'rgba(255, 77, 77, 0.1)', 
+          padding: '10px', 
+          borderRadius: '8px', 
+          marginBottom: '15px',
+          fontSize: '0.9rem'
+        }}>
+          {error}
+        </div>
+      )}
+
       <QuantitySelector>
         <QuantityButton
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={handleDecrement}
-          disabled={validationCount <= 1 || isValidating}
+          disabled={validationCount <= 1 || isValidating || ticket.validationsRemaining === 0}
         >
           <FiMinus />
         </QuantityButton>
@@ -156,7 +273,7 @@ const TicketValidation: React.FC<ValidationProps> = ({ ticket, onValidationCompl
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={handleIncrement}
-          disabled={validationCount >= ticket.validationsRemaining || isValidating}
+          disabled={validationCount >= ticket.validationsRemaining || isValidating || ticket.validationsRemaining === 0}
         >
           <FiPlus />
         </QuantityButton>
@@ -166,7 +283,12 @@ const TicketValidation: React.FC<ValidationProps> = ({ ticket, onValidationCompl
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         onClick={handleValidate}
-        disabled={isValidating || ticket.validationsRemaining === 0}
+        disabled={
+          isValidating || 
+          ticket.validationsRemaining === 0 || 
+          validationCount > ticket.validationsRemaining ||
+          validationCount < 1
+        }
       >
         {isValidating ? (
           <>Processing...</>
@@ -178,11 +300,28 @@ const TicketValidation: React.FC<ValidationProps> = ({ ticket, onValidationCompl
         )}
       </ValidateButton>
 
-      {ticket.validationSummary?.lastBatchValidation && (
-        <div style={{ marginTop: '20px', fontSize: '0.9rem', color: '#666' }}>
-          Last batch: {ticket.validationSummary.lastBatchValidation.count} tickets at{' '}
-          {new Date(ticket.validationSummary.lastBatchValidation.timestamp).toLocaleString()}
-        </div>
+      {ticket.validations && ticket.validations.length > 0 && (
+        <ValidationHistory>
+          <h4>
+            <FiClock size={14} />
+            Validation History
+          </h4>
+          {ticket.validations.map((validation, index) => (
+            <HistoryItem key={`${validation.timestamp}_${index}`}>
+              <div className="validation-info">
+                <span className="count">
+                  {validation.count} ticket{validation.count > 1 ? 's' : ''} validated
+                </span>
+                <span className="timestamp">
+                  {new Date(validation.timestamp).toLocaleString()}
+                </span>
+              </div>
+              <div className="validator">
+                Validated by: <span className="email">{validation.validatedByEmail}</span>
+              </div>
+            </HistoryItem>
+          ))}
+        </ValidationHistory>
       )}
     </ValidationContainer>
   );

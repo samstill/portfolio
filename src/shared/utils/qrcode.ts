@@ -1,5 +1,4 @@
 import QRCode from 'qrcode';
-import logger from './logger';
 
 export const generateQR = async (text: string): Promise<string> => {
   try {
@@ -23,7 +22,7 @@ export const generateQR = async (text: string): Promise<string> => {
     
     return url;
   } catch (err) {
-    logger.error('Error generating QR code:', err);
+    console.error('Error generating QR code:', err);
     throw new Error('Failed to generate QR code');
   }
 };

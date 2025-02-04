@@ -3,8 +3,15 @@ import { db } from '../config';
 import { Ticket } from '../../domain/entities/Ticket';
 import { generateQR } from '../../shared/utils/qrcode';
 import { eventService } from './eventService';
-import { useAuth } from '../../shared/context/AuthContext';
-import logger from '../../shared/utils/logger';
+import { auth } from '../../firebase';
+
+interface ValidationResult {
+  success: boolean;
+  message: string;
+  validationsRemaining: number;
+  usedCount: number;
+  status: Ticket['status'];
+}
 
 export const ticketService = {
   async createTicket(ticketData: Omit<Ticket, 'id' | 'qrCode' | 'validationsRemaining' | 'validations'>): Promise<Ticket> {
@@ -71,25 +78,22 @@ export const ticketService = {
         qrCode
       };
     } catch (error) {
-      logger.error('Error creating ticket:', error);
+      console.error('Error creating ticket:', error);
       throw error;
     }
   },
 
-  getTicket: async (ticketId: string): Promise<Ticket | null> => {
+  async getTicket(ticketId: string): Promise<Ticket | null> {
     try {
       const ticketDoc = await getDoc(doc(db, 'tickets', ticketId));
-      if (!ticketDoc.exists()) return null;
-      return transformTicketData(ticketDoc.id, ticketDoc.data());
+      if (!ticketDoc.exists()) {
+        return null;
+      }
+      const data = ticketDoc.data();
+      return this.transformTicketData(ticketId, data);
     } catch (error) {
-      logger.error('Error getting ticket:', error);
-      return null;
+      throw new Error('Failed to fetch ticket');
     }
-  },
-
-  // Alias for getTicket to maintain API consistency
-  getTicketById: async (ticketId: string): Promise<Ticket | null> => {
-    return ticketService.getTicket(ticketId);
   },
 
   async getTicketsByUserId(userId: string): Promise<Ticket[]> {
@@ -102,41 +106,99 @@ export const ticketService = {
         ...doc.data()
       } as Ticket));
     } catch (error) {
-      logger.error('Error fetching user tickets:', error);
+      console.error('Error fetching user tickets:', error);
       throw new Error('Failed to fetch user tickets');
     }
   },
 
-  async validateTicket(ticketId: string): Promise<ValidationResult> {
+  async validateTicket(ticketId: string, validationCount: number = 1): Promise<ValidationResult> {
     try {
+      if (!ticketId) {
+        throw new Error('Ticket ID is required');
+      }
+
+      if (validationCount < 1) {
+        throw new Error('Validation count must be at least 1');
+      }
+
       const ticketRef = doc(db, 'tickets', ticketId);
-      const ticketDoc = await getDoc(ticketRef);
       
-      if (!ticketDoc.exists()) {
-        throw new Error('Ticket not found');
-      }
+      return await runTransaction(db, async (transaction) => {
+        const ticketDoc = await transaction.get(ticketRef);
+        
+        if (!ticketDoc.exists()) {
+          throw new Error('Ticket not found');
+        }
 
-      const data = ticketDoc.data();
-      const validationsRemaining = data.quantity - data.usedCount;
-      const usedCount = data.usedCount || 0;
+        const data = ticketDoc.data();
+        
+        // Ensure all required fields exist
+        if (!data.quantity || typeof data.usedCount === 'undefined') {
+          throw new Error('Invalid ticket data');
+        }
 
-      if (validationsRemaining <= 0 || data.status !== 'valid') {
-        throw new Error('Ticket is no longer valid');
-      }
+        // Calculate validations remaining
+        const validationsRemaining = data.validationsRemaining ?? (data.quantity - (data.usedCount || 0));
+        const usedCount = data.usedCount || 0;
 
-      await updateDoc(ticketRef, {
-        usedCount: usedCount + 1,
-        status: validationsRemaining === 1 ? 'used' : 'valid',
-        lastValidatedAt: serverTimestamp()
+        // Validate ticket status and remaining count
+        if (data.status !== 'valid') {
+          throw new Error('Ticket is no longer valid');
+        }
+
+        if (validationsRemaining <= 0) {
+          throw new Error('No validations remaining');
+        }
+
+        if (validationCount > validationsRemaining) {
+          throw new Error(`Cannot validate ${validationCount} tickets. Only ${validationsRemaining} remaining.`);
+        }
+
+        // Calculate new values
+        const newUsedCount = usedCount + validationCount;
+        const newValidationsRemaining = validationsRemaining - validationCount;
+        const newStatus = newValidationsRemaining === 0 ? 'used' : 'valid';
+
+        // Create validation record with current timestamp and user email
+        const now = new Date();
+        const validationRecord = {
+          timestamp: now.toISOString(),
+          count: validationCount,
+          validatedBy: auth.currentUser?.uid || 'system',
+          validatedByEmail: auth.currentUser?.email || 'system'
+        };
+
+        // Prepare update data
+        const updateData = {
+          usedCount: newUsedCount,
+          validationsRemaining: newValidationsRemaining,
+          status: newStatus,
+          lastValidatedAt: serverTimestamp(),
+          validations: [...(data.validations || []), validationRecord],
+          validationSummary: {
+            total: data.quantity,
+            used: newUsedCount,
+            remaining: newValidationsRemaining,
+            lastUpdated: now.toISOString(),
+            lastBatchValidation: validationRecord
+          }
+        };
+
+        // Update ticket document
+        transaction.update(ticketRef, updateData);
+
+        // Return validation result
+        return {
+          success: true,
+          message: `Successfully validated ${validationCount} ticket${validationCount > 1 ? 's' : ''}`,
+          validationsRemaining: newValidationsRemaining,
+          usedCount: newUsedCount,
+          status: newStatus
+        };
       });
-
-      return {
-        success: true,
-        message: 'Ticket validated successfully',
-        validationsRemaining: validationsRemaining - 1
-      };
-    } catch (error) {
-      throw new Error('Failed to validate ticket');
+    } catch (error: any) {
+      console.error('Error validating ticket:', error);
+      throw new Error(error.message || 'Failed to validate ticket');
     }
   },
 
@@ -148,7 +210,7 @@ export const ticketService = {
       }
       return ticketDoc.data().validations || [];
     } catch (error) {
-      logger.error('Error getting validation history:', error);
+      console.error('Error getting validation history:', error);
       throw error;
     }
   },
@@ -210,21 +272,5 @@ export const ticketService = {
     };
 
     return transformedTicket;
-  },
-
-  async searchTickets(searchText: string): Promise<Ticket[]> {
-    try {
-      const ticketsRef = collection(db, 'tickets');
-      const q = query(
-        ticketsRef,
-        where('userEmail', '>=', searchText),
-        where('userEmail', '<=', searchText + '\uf8ff')
-      );
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
-    } catch (error) {
-      console.error('Error searching tickets:', error);
-      return [];
-    }
-  },
+  }
 };

@@ -323,33 +323,6 @@ export const userService = {
       console.error('Error getting user by ID:', error);
       throw new Error('Failed to get user data');
     }
-  },
-
-  async getUser(userId: string): Promise<UserData | null> {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (!userDoc.exists()) return null;
-      return { id: userDoc.id, ...userDoc.data() } as UserData;
-    } catch (error) {
-      console.error('Error getting user:', error);
-      return null;
-    }
-  },
-
-  async searchUsers(searchText: string): Promise<UserData[]> {
-    try {
-      const usersRef = collection(db, 'users');
-      const q = query(
-        usersRef,
-        where('email', '>=', searchText),
-        where('email', '<=', searchText + '\uf8ff')
-      );
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
-    } catch (error) {
-      console.error('Error searching users:', error);
-      return [];
-    }
   }
 };
 

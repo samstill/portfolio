@@ -10,7 +10,6 @@ import { Ticket } from '../../domain/entities/Ticket';
 import BackButton from '../components/BackButton';
 import { FiClock, FiCheck, FiX, FiUser, FiShare2 } from 'react-icons/fi';
 import createTicketPDF from '../../shared/utils/pdfGenerator';
-import logger from '../../shared/utils/logger';
 
 const Container = styled.div`
   min-height: 100vh;
@@ -372,7 +371,7 @@ const TicketScreen: React.FC = () => {
       // Clear loading toast
       toast.dismiss(loadingToast);
     } catch (error) {
-      logger.error('Error sharing ticket:', error);
+      console.error('Error sharing ticket:', error);
       toast.error('Unable to share ticket');
     }
   };
@@ -424,6 +423,15 @@ const TicketScreen: React.FC = () => {
   const usagePercentage = Math.min((usedCount / ticket.quantity) * 100, 100);
   const status = ticket.status;
 
+  console.log('Ticket Screen Status:', {
+    validationsRemaining: ticket.validationsRemaining,
+    quantity: ticket.quantity,
+    usedCount,
+    firebaseStatus: ticket.status,
+    status,
+    usagePercentage
+  });
+
   return (
     <Container>
       <BackButton />
@@ -438,7 +446,7 @@ const TicketScreen: React.FC = () => {
               src={ticket.qrCode} 
               alt="Ticket QR Code"
               onError={(e) => {
-                logger.error('Error loading QR code');
+                console.error('Error loading QR code');
                 e.currentTarget.style.display = 'none';
               }}
             />

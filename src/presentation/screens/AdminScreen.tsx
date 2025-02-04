@@ -18,13 +18,8 @@ import { SearchBar } from '../components/SearchBar';
 import { useInView } from 'react-intersection-observer';
 import debounce from 'lodash/debounce';
 import { useNavigate } from 'react-router-dom';
-import { logger } from '../../utils/logger';
-import { css } from 'styled-components';
-
-interface StyledProps {
-  $isScanning?: boolean;
-  $isActive?: boolean;
-}
+import QRScannerSection from '../components/admin/QRScannerSection';
+import TicketActions from '../components/admin/TicketActions';
 
 const Container = styled.div`
   min-height: 100vh;
@@ -499,7 +494,7 @@ const TicketFooter = styled.div`
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
-const TicketActions = styled.div`
+const TicketActionButtons = styled.div`
   display: flex;
   gap: 12px;
   margin-left: 35px;
@@ -562,43 +557,11 @@ const StatusBadge = styled.span<{ status: Ticket['status'] }>`
   }
 `;
 
-const QRScannerWrapper = styled.div<StyledProps>`
-  width: 100%;
-  max-width: 300px;
-  margin: 0 auto;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
-  max-height: ${props => props.$isScanning ? '300px' : '0px'};
-  opacity: ${props => props.$isScanning ? 1 : 0};
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  
-  @media (max-width: 768px) {
-    max-width: 250px;
-    max-height: ${props => props.$isScanning ? '250px' : '0px'};
-    border-radius: 12px;
-  }
-`;
-
-const QRScannerSection = motion(QRScannerWrapper);
-
-const QRScannerContent = styled.div`
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  aspect-ratio: 1;
-`;
-
 const SearchWrapper = styled.div`
   width: 100%;
   padding: 0 15px;
-  margin-bottom: 10px;
+  margin-bottom: 20px;
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
 
   @media (max-width: 768px) {
     padding: 0 15px;
@@ -612,38 +575,6 @@ const SearchWrapper = styled.div`
       width: 100%;
       box-sizing: border-box;
     }
-  }
-`;
-
-const QRScannerButton = styled(motion.button)<StyledProps>`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: ${props => props.$isScanning ? 
-    'rgba(255, 71, 87, 0.1)' : 
-    'linear-gradient(135deg, #6e8efb, #4a6cf7)'};
-  color: ${props => props.$isScanning ? '#ff4757' : 'white'};
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: 500;
-  box-shadow: ${props => props.$isScanning ? 
-    'none' : 
-    '0 4px 12px rgba(74, 108, 247, 0.2)'};
-  margin: 0 auto;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: ${props => props.$isScanning ? 
-      'none' : 
-      '0 6px 16px rgba(74, 108, 247, 0.3)'};
-  }
-
-  @media (max-width: 768px) {
-    padding: 10px 20px;
-    font-size: 0.95rem;
   }
 `;
 
@@ -1212,71 +1143,6 @@ const getInitials = (email: string) => {
     .slice(0, 2);
 };
 
-const ScanButton = styled(motion.button)`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, #6e8efb, #4a6cf7);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: 500;
-  box-shadow: 0 4px 12px rgba(74, 108, 247, 0.2);
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(74, 108, 247, 0.3);
-  }
-
-  @media (max-width: 768px) {
-    padding: 10px 16px;
-    font-size: 0.95rem;
-  }
-`;
-
-const ScannerOverlay = styled(motion.div)`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-`;
-
-const ScannerContainer = styled(motion.div)`
-  width: 100%;
-  max-width: 500px;
-  background: ${props => props.theme.background};
-  border-radius: 20px;
-  padding: 30px;
-  position: relative;
-`;
-
-const CloseButton = styled(motion.button)`
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: ${props => props.theme.text};
-  cursor: pointer;
-  z-index: 10;
-`;
-
 const AdminScreen: React.FC = () => {
   const { selectedModel } = useAI();
   const [activeTab, setActiveTab] = useState<TabType>('users');
@@ -1446,30 +1312,12 @@ const AdminScreen: React.FC = () => {
 
   // Debounced search handlers
   const debouncedUserSearch = useMemo(
-    () => debounce(async (searchText: string) => {
-      try {
-        setLoading(true);
-        await fetchUsers(searchText, true);
-        setLoading(false);
-      } catch (error) {
-        logger.error('Error searching users:', error);
-        setLoading(false);
-      }
-    }, 300),
+    () => debounce((searchText: string) => fetchUsers(searchText, true), 500),
     [fetchUsers]
   );
 
   const debouncedTicketSearch = useMemo(
-    () => debounce(async (searchText: string) => {
-      try {
-        setLoading(true);
-        await fetchTickets(searchText, true);
-        setLoading(false);
-      } catch (error) {
-        logger.error('Error searching tickets:', error);
-        setLoading(false);
-      }
-    }, 300),
+    () => debounce((searchText: string) => fetchTickets(searchText, true), 500),
     [fetchTickets]
   );
 
@@ -1565,13 +1413,26 @@ const AdminScreen: React.FC = () => {
         toast.error('Ticket is already used or cancelled');
         return;
       }
-      await ticketService.validateTicket(ticketId);
-      setTickets(tickets.map(ticket => 
-        ticket.id === ticketId ? { ...ticket, status: 'used' as const } : ticket
-      ));
-      toast.success('Ticket validated successfully');
-    } catch (err) {
-      toast.error('Failed to validate ticket');
+
+      // Validate all remaining tickets at once
+      const result = await ticketService.validateTicket(ticketId, ticket.validationsRemaining);
+      
+      if (result.success) {
+        setTickets(tickets.map(t => 
+          t.id === ticketId ? { 
+            ...t, 
+            status: result.status,
+            validationsRemaining: result.validationsRemaining,
+            usedCount: result.usedCount
+          } : t
+        ));
+        toast.success(result.message);
+      } else {
+        toast.error('Failed to validate tickets');
+      }
+    } catch (err: any) {
+      console.error('Validation error:', err);
+      toast.error(err.message || 'Failed to validate tickets');
     }
   };
 
@@ -1587,14 +1448,6 @@ const AdminScreen: React.FC = () => {
     }
   };
 
-  const handleSearch = useCallback((query: string) => {
-    if (activeTab === 'users') {
-      void debouncedUserSearch(query);
-    } else {
-      void debouncedTicketSearch(query);
-    }
-  }, [activeTab, debouncedUserSearch, debouncedTicketSearch]);
-
   const handleScan = async (data: string | null) => {
     if (!data) return;
 
@@ -1607,13 +1460,19 @@ const AdminScreen: React.FC = () => {
         return;
       }
 
-      // Get the ticket from the service
-      const ticket = await ticketService.getTicketById(qrData.ticketId);
+      const db = getFirestore();
+      const ticketsRef = collection(db, 'tickets');
       
-      if (!ticket) {
+      // Query Firebase directly for this specific ticket
+      const ticketDoc = doc(db, 'tickets', qrData.ticketId);
+      const ticketSnapshot = await getDoc(ticketDoc);
+      
+      if (!ticketSnapshot.exists()) {
         toast.error('Ticket not found');
         return;
       }
+
+      const ticket = { id: ticketSnapshot.id, ...ticketSnapshot.data() } as Ticket;
 
       // Check ticket status
       if (ticket.status === 'used') {
@@ -1643,7 +1502,7 @@ const AdminScreen: React.FC = () => {
       });
 
     } catch (error) {
-      logger.error('Error scanning ticket:', error);
+      console.error('Error scanning ticket:', error);
       toast.error('Invalid QR code', {
         duration: 3000,
         icon: '❌'
@@ -1686,9 +1545,10 @@ const AdminScreen: React.FC = () => {
     }
   };
 
-  const handleValidationComplete = () => {
-    setSelectedTicket(null);
-    // Refresh ticket list if needed
+  const handleTicketUpdate = (ticketId: string, updates: Partial<Ticket>) => {
+    setTickets(tickets.map(ticket => 
+      ticket.id === ticketId ? { ...ticket, ...updates } : ticket
+    ));
   };
 
   const renderContent = () => {
@@ -1701,15 +1561,6 @@ const AdminScreen: React.FC = () => {
               onSearch={debouncedUserSearch}
               isLoading={isSearching}
             />
-            <QRScannerButton
-              onClick={() => setIsScannerOpen(!isScannerOpen)}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              $isScanning={isScannerOpen}
-            >
-              <FiCamera size={18} />
-              {isScannerOpen ? 'Stop Scanning' : 'Scan Ticket'}
-            </QRScannerButton>
           </SearchWrapper>
           
           <AnimatePresence mode="wait">
@@ -1781,64 +1632,22 @@ const AdminScreen: React.FC = () => {
 
     return (
       <motion.div {...pageTransition}>
-        <SearchWrapper>
-          <SearchBar
-            placeholder="Search tickets by number, event, or user..."
-            onSearch={handleSearch}
-            isLoading={isSearching}
-          />
-          <QRScannerButton
-            onClick={() => setIsScannerOpen(!isScannerOpen)}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            $isScanning={isScannerOpen}
-          >
-            <FiCamera size={18} />
-            {isScannerOpen ? 'Stop Scanning' : 'Scan Ticket'}
-          </QRScannerButton>
-        </SearchWrapper>
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <SearchWrapper>
+            <SearchBar
+              placeholder="Search tickets by number, event, or user..."
+              onSearch={debouncedTicketSearch}
+              isLoading={isSearching}
+            />
+          </SearchWrapper>
 
-        <AnimatePresence>
-          {isScannerOpen && (
-            <QRScannerSection
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.3, ease: 'easeInOut' }}
-              $isScanning={isScannerOpen}
-            >
-              <QRScannerContent>
-                <QRScanner 
-                  onScan={handleScan} 
-                  onError={(error) => logger.error('QR Scanner error:', error)} 
-                />
-              </QRScannerContent>
-            </QRScannerSection>
-          )}
-        </AnimatePresence>
+          <QRScannerSection onTicketFound={(ticket) => setSelectedTicket(ticket)} />
 
-        <AnimatePresence mode="wait">
-          {loading ? (
-            <TicketsGrid
-              as={motion.div}
-              variants={staggerContainer}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-            >
-              {[...Array(6)].map((_, index) => (
-                <motion.div key={index} variants={cardTransition}>
-                  <TicketCardSkeleton />
-                </motion.div>
-              ))}
-            </TicketsGrid>
-          ) : tickets.length === 0 ? (
-            <NoResults {...pageTransition}>
-              <FiTag size={40} />
-              <p>No tickets found</p>
-            </NoResults>
-          ) : (
-            <>
+          <AnimatePresence mode="wait">
+            {loading ? (
               <TicketsGrid
                 as={motion.div}
                 variants={staggerContainer}
@@ -1846,131 +1655,130 @@ const AdminScreen: React.FC = () => {
                 animate="animate"
                 exit="exit"
               >
-                {tickets.map((ticket, index) => {
-                  const usagePercentage = (ticket.usedCount / ticket.quantity) * 100;
-                  const isSelected = selectedTicket?.id === ticket.id;
-                  const uniqueKey = `${ticket.id}_${index}`;
-                  
-                  return (
-                    <motion.div
-                      key={uniqueKey}
-                      variants={cardTransition}
-                      custom={index}
-                    >
-                      <TicketCard
-                        $isSelected={isSelected}
-                        onClick={() => setSelectedTicket(ticket)}
+                {[...Array(6)].map((_, index) => (
+                  <motion.div key={index} variants={cardTransition}>
+                    <TicketCardSkeleton />
+                  </motion.div>
+                ))}
+              </TicketsGrid>
+            ) : tickets.length === 0 ? (
+              <NoResults {...pageTransition}>
+                <FiTag size={40} />
+                <p>No tickets found</p>
+              </NoResults>
+            ) : (
+              <>
+                <TicketsGrid
+                  as={motion.div}
+                  variants={staggerContainer}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                >
+                  {tickets.map((ticket, index) => {
+                    const usagePercentage = (ticket.usedCount / ticket.quantity) * 100;
+                    const isSelected = selectedTicket?.id === ticket.id;
+                    const uniqueKey = `${ticket.id}_${index}`;
+                    
+                    return (
+                      <motion.div
+                        key={uniqueKey}
+                        variants={cardTransition}
+                        custom={index}
                       >
-                        <TicketCardHeader>
-                          <TicketTitle>{ticket.eventDetails.title}</TicketTitle>
-                          <StatusBadge status={ticket.status}>
-                            {ticket.status.toUpperCase()}
-                          </StatusBadge>
-                        </TicketCardHeader>
+                        <TicketCard
+                          $isSelected={isSelected}
+                          onClick={() => setSelectedTicket(ticket)}
+                        >
+                          <TicketCardHeader>
+                            <TicketTitle>{ticket.eventDetails.title}</TicketTitle>
+                            <StatusBadge status={ticket.status}>
+                              {ticket.status.toUpperCase()}
+                            </StatusBadge>
+                          </TicketCardHeader>
 
-                        <ProgressBar $percentage={usagePercentage} />
-                        
-                        <TicketDetails>
-                          <DetailItem>
-                            <div className="label">Ticket #</div>
-                            <div className="value">{ticket.ticketNumber}</div>
-                          </DetailItem>
-                          <DetailItem>
-                            <div className="label">User ID</div>
-                            <div className="value" style={{ fontSize: '0.8rem' }}>
-                              {ticket.userId.substring(0, 8)}...
-                            </div>
-                          </DetailItem>
-                          <DetailItem>
-                            <div className="label">Event Date</div>
-                            <div className="value">
-                              {new Date(ticket.eventDetails.date).toLocaleDateString()}
-                            </div>
-                          </DetailItem>
-                          <DetailItem>
-                            <div className="label">Purchase Date</div>
-                            <div className="value">
-                              {new Date(ticket.purchasedAt).toLocaleDateString()}
-                            </div>
-                          </DetailItem>
-                          {ticket.lastValidatedAt && (
+                          <ProgressBar $percentage={usagePercentage} />
+                          
+                          <TicketDetails>
                             <DetailItem>
-                              <div className="label">Last Used</div>
-                              <div className="value">
-                                {new Date(ticket.lastValidatedAt).toLocaleString()}
+                              <div className="label">Ticket #</div>
+                              <div className="value">{ticket.ticketNumber}</div>
+                            </DetailItem>
+                            <DetailItem>
+                              <div className="label">User ID</div>
+                              <div className="value" style={{ fontSize: '0.8rem' }}>
+                                {ticket.userId.substring(0, 8)}...
                               </div>
                             </DetailItem>
-                          )}
-                        </TicketDetails>
+                            <DetailItem>
+                              <div className="label">Event Date</div>
+                              <div className="value">
+                                {new Date(ticket.eventDetails.date).toLocaleDateString()}
+                              </div>
+                            </DetailItem>
+                            <DetailItem>
+                              <div className="label">Purchase Date</div>
+                              <div className="value">
+                                {new Date(ticket.purchasedAt).toLocaleDateString()}
+                              </div>
+                            </DetailItem>
+                            {ticket.lastValidatedAt && (
+                              <DetailItem>
+                                <div className="label">Last Used</div>
+                                <div className="value">
+                                  {new Date(ticket.lastValidatedAt).toLocaleString()}
+                                </div>
+                              </DetailItem>
+                            )}
+                          </TicketDetails>
 
-                        {ticket.status === 'valid' && (
-                          <TicketFooter>
-                            <TicketActions>
-                              <ActionButton
-                                $variant="verify"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleValidateTicket(ticket.id);
-                                }}
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                              >
-                                <FiCheck size={16} />
-                                Quick Validate
-                              </ActionButton>
-                              <ActionButton
-                                $variant="cancel"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCancelTicket(ticket.id);
-                                }}
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                              >
-                                <FiX size={16} />
-                                Cancel
-                              </ActionButton>
-                            </TicketActions>
-                          </TicketFooter>
-                        )}
+                          <TicketActions 
+                            ticket={ticket}
+                            onUpdate={(updates) => handleTicketUpdate(ticket.id, updates)}
+                          />
 
-                        <TicketStats>
-                          <StatBadge>
-                            <span className="count">{ticket.usedCount}</span>
-                            <span className="label">/ {ticket.quantity}</span>
-                          </StatBadge>
-                        </TicketStats>
-                      </TicketCard>
-                    </motion.div>
-                  );
-                })}
-              </TicketsGrid>
-              {(hasMore || loadingMore) && (
-                <LoadMoreContainer ref={loadMoreRef}>
-                  {loadingMore && <LoadingAnimation />}
-                </LoadMoreContainer>
-              )}
-            </>
-          )}
-        </AnimatePresence>
+                          <TicketStats>
+                            <StatBadge>
+                              <span className="count">{ticket.usedCount}</span>
+                              <span className="label">/ {ticket.quantity}</span>
+                            </StatBadge>
+                          </TicketStats>
+                        </TicketCard>
+                      </motion.div>
+                    );
+                  })}
+                </TicketsGrid>
+                {(hasMore || loadingMore) && (
+                  <LoadMoreContainer ref={loadMoreRef}>
+                    {loadingMore && <LoadingAnimation />}
+                  </LoadMoreContainer>
+                )}
+              </>
+            )}
+          </AnimatePresence>
+        </motion.div>
       </motion.div>
     );
   };
-
-  const MotionContainer = styled(motion.div)`
-    width: 100%;
-    height: 100%;
-  `;
 
   return (
     <Container>
       <BackButton />
       <AdminCard
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        as={motion.div}
+        {...pageTransition}
       >
-        <TabContainer>
+        <TabContainer
+          as={motion.div}
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{
+            type: "spring",
+            stiffness: 400,
+            damping: 25,
+            mass: 1
+          }}
+        >
           <Tab
             as={motion.button}
             variants={tabVariants}
@@ -2017,9 +1825,10 @@ const AdminScreen: React.FC = () => {
       <AnimatePresence>
         {selectedTicket && (
           <ValidationOverlay
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={overlayTransition}
+            initial="initial"
+            animate="animate"
+            exit="exit"
           >
             <ValidationCloseButton
               onClick={() => setSelectedTicket(null)}
@@ -2030,7 +1839,20 @@ const AdminScreen: React.FC = () => {
             </ValidationCloseButton>
             <TicketValidation
               ticket={selectedTicket}
-              onValidationComplete={handleValidationComplete}
+              onValidationComplete={() => {
+                if (selectedTicket.id) {
+                  Promise.all([
+                    ticketService.getTicket(selectedTicket.id).then(setSelectedTicket),
+                    ticketService.getAllTickets().then((newTickets) => {
+                      setTickets(
+                        newTickets.sort((a, b) => 
+                        new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime()
+                    )
+                      );
+                    })
+                  ]);
+                }
+              }}
             />
           </ValidationOverlay>
         )}
