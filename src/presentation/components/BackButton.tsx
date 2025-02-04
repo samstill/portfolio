@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { FiArrowLeft } from 'react-icons/fi';
 
@@ -23,11 +22,13 @@ const StyledButton = styled.button`
   }
 `;
 
-const BackButton: React.FC = () => {
-  const navigate = useNavigate();
+interface BackButtonProps {
+  onClick?: () => void;
+}
 
+const BackButton: React.FC<BackButtonProps> = ({ onClick }) => {
   return (
-    <StyledButton onClick={() => navigate(-1)} aria-label="Go back">
+    <StyledButton onClick={onClick} aria-label="Go back">
       <FiArrowLeft size={24} />
     </StyledButton>
   );

@@ -299,6 +299,146 @@ const getStatusColor = (status: string, percentage: number) => {
   }
 };
 
+const SkeletonPulse = styled.div`
+  display: inline-block;
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg,
+    ${props => props.theme.background},
+    rgba(255, 255, 255, 0.1),
+    ${props => props.theme.background}
+  );
+  background-size: 200% 100%;
+  animation: pulse 2s ease-in-out infinite;
+
+  @keyframes pulse {
+    0% {
+      background-position: 100% 0%;
+    }
+    100% {
+      background-position: -100% 0%;
+    }
+  }
+`;
+
+const SkeletonCard = styled(motion.div)`
+  max-width: 500px;
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+`;
+
+const SkeletonQRCode = styled.div`
+  width: 250px;
+  height: 250px;
+  margin: 20px auto;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+`;
+
+const SkeletonTitle = styled.div`
+  height: 32px;
+  width: 70%;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+const SkeletonBadge = styled.div`
+  height: 28px;
+  width: 120px;
+  border-radius: 20px;
+  margin-bottom: 25px;
+  overflow: hidden;
+`;
+
+const SkeletonSummary = styled.div`
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px 0;
+  overflow: hidden;
+`;
+
+const SkeletonSummaryGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 15px;
+`;
+
+const SkeletonSummaryItem = styled.div`
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+const SkeletonProgress = styled.div`
+  width: 150px;
+  height: 150px;
+  margin: 30px auto;
+  border-radius: 50%;
+  overflow: hidden;
+`;
+
+const SkeletonText = styled.div<{ width?: string }>`
+  height: 16px;
+  width: ${props => props.width || '100%'};
+  margin: 12px 0;
+  border-radius: 4px;
+  overflow: hidden;
+`;
+
+const LoadingSkeleton: React.FC = () => (
+  <Container>
+    <BackButton onClick={() => navigate(-1)} />
+    <SkeletonCard
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <SkeletonQRCode>
+        <SkeletonPulse />
+      </SkeletonQRCode>
+
+      <SkeletonTitle>
+        <SkeletonPulse />
+      </SkeletonTitle>
+
+      <SkeletonBadge>
+        <SkeletonPulse />
+      </SkeletonBadge>
+
+      <SkeletonSummary>
+        <SkeletonText width="30%">
+          <SkeletonPulse />
+        </SkeletonText>
+        <SkeletonSummaryGrid>
+          {[1, 2, 3].map((i) => (
+            <SkeletonSummaryItem key={i}>
+              <SkeletonPulse />
+            </SkeletonSummaryItem>
+          ))}
+        </SkeletonSummaryGrid>
+      </SkeletonSummary>
+
+      <SkeletonProgress>
+        <SkeletonPulse />
+      </SkeletonProgress>
+
+      {[1, 2, 3, 4].map((i) => (
+        <SkeletonText key={i} width={`${Math.random() * 30 + 60}%`}>
+          <SkeletonPulse />
+        </SkeletonText>
+      ))}
+    </SkeletonCard>
+  </Container>
+);
+
 const TicketScreen: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
   const navigate = useNavigate();
@@ -377,14 +517,7 @@ const TicketScreen: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <Container>
-        <LoadingSpinner
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-        />
-      </Container>
-    );
+    return <LoadingSkeleton />;
   }
 
   if (error) {
@@ -434,7 +567,7 @@ const TicketScreen: React.FC = () => {
 
   return (
     <Container>
-      <BackButton />
+      <BackButton onClick={() => navigate(-1)} />
       <TicketCard
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

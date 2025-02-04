@@ -154,7 +154,7 @@ const MyTicketsScreen: React.FC = () => {
   return (
     <Container>
       <Header>
-        <BackButton />
+        <BackButton onClick={() => navigate('/events')} />
         <Title
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

@@ -39,6 +39,7 @@ const PaymentErrorScreen = React.lazy(() => import('./presentation/screens/Payme
 const UserDetailScreen = React.lazy(() => import('./presentation/screens/UserDetailScreen'));
 const UserTicketsScreen = React.lazy(() => import('./presentation/screens/UserTicketsScreen'));
 const UserTransactionsScreen = React.lazy(() => import('./presentation/screens/UserTransactionsScreen'));
+const TicketValidationScreen = React.lazy(() => import('./presentation/screens/admin/TicketValidationScreen'));
 
 // Lazy load legal screens
 const TermsConditionsScreen = React.lazy(() => import('./presentation/screens/legal/TermsConditionsScreen'));
@@ -230,14 +231,27 @@ const router = createBrowserRouter(
         path="admin"
         element={
           <AdminRoute>
-            <Suspense fallback={
-              <LoadingSpinner>
-                <SpinnerWrapper>
-                  <Spinner />
-                </SpinnerWrapper>
-                <LoadingText>Loading...</LoadingText>
-              </LoadingSpinner>
-            }>
+            <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
+              <AdminScreen />
+            </Suspense>
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="admin/users"
+        element={
+          <AdminRoute>
+            <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
+              <AdminScreen />
+            </Suspense>
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="admin/tickets"
+        element={
+          <AdminRoute>
+            <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
               <AdminScreen />
             </Suspense>
           </AdminRoute>
@@ -290,6 +304,23 @@ const router = createBrowserRouter(
               </LoadingSpinner>
             }>
               <UserTransactionsScreen />
+            </Suspense>
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="admin/tickets/:ticketId/validate"
+        element={
+          <AdminRoute>
+            <Suspense fallback={
+              <LoadingSpinner>
+                <SpinnerWrapper>
+                  <Spinner />
+                </SpinnerWrapper>
+                <LoadingText>Loading...</LoadingText>
+              </LoadingSpinner>
+            }>
+              <TicketValidationScreen />
             </Suspense>
           </AdminRoute>
         }
