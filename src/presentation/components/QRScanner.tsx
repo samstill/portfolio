@@ -1,52 +1,58 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { FiCamera, FiLoader } from 'react-icons/fi';
-import { toast } from 'react-hot-toast';
+import { FiLoader } from 'react-icons/fi';
 
 const ScannerContainer = styled(motion.div)`
   width: 100%;
-  max-width: 600px;
+  max-width: min(500px, 90vw);
+  aspect-ratio: 1;
   margin: 0 auto;
   position: relative;
-  background: rgba(0, 0, 0, 0.8);
-  border-radius: 16px;
+  background: #000;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
-
-  @media (max-width: 768px) {
-    max-width: 100%;
-    border-radius: 12px;
-  }
 `;
 
-const SwitchCameraButton = styled(motion.button)`
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+const ScannerElement = styled.div`
+  width: 100%;
+  height: 100%;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  cursor: pointer;
-  z-index: 100;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
 
-  &:hover {
-    background: rgba(255, 255, 255, 0.3);
+  #qr-shaded-region {
+    border-width: 2px !important;
+    border-style: solid !important;
+    border-color: white !important;
+    margin: 0 !important;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5) !important;
   }
 
-  @media (max-width: 768px) {
-    bottom: 15px;
-    right: 15px;
-    width: 36px;
-    height: 36px;
+  & > div {
+    width: 100% !important;
+    height: 100% !important;
+    position: relative !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: transparent !important;
+
+    & > img, & > button {
+      display: none !important;
+    }
+  }
+
+  video {
+    position: absolute !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    transform: none !important;
   }
 `;
 
@@ -54,252 +60,377 @@ const ScannerOverlay = styled.div`
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
   z-index: 10;
 `;
 
 const ScannerMessage = styled.div`
   color: white;
-  text-align: center;
-  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 1.1rem;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.8);
+  padding: 12px 20px;
   border-radius: 8px;
-  max-width: 80%;
-  margin: 0 auto;
-
-  @media (max-width: 768px) {
-    font-size: 1rem;
-    padding: 15px;
-  }
-`;
-
-const ScannerElement = styled.div`
-  width: 100%;
-  min-height: 300px;
-  border-radius: 16px;
-  overflow: hidden;
-  background: transparent;
-  position: relative;
-
-  @media (max-width: 768px) {
-    min-height: 250px;
-  }
 `;
 
 interface QRScannerProps {
   onScan: (data: string | null) => void;
   onError?: (error: string) => void;
+  onLoad?: () => void;
+  facingMode?: 'environment' | 'user';
+  constraints?: MediaTrackConstraints;
+  isOpen?: boolean;
 }
 
-interface Camera {
-  id: string;
-  label: string;
-}
-
-const QRScanner: React.FC<QRScannerProps> = ({ onScan, onError }) => {
+const QRScanner: React.FC<QRScannerProps> = ({
+  onScan,
+  onError,
+  onLoad,
+  facingMode = 'environment',
+  constraints,
+  isOpen = true
+}) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const elementRef = useRef<HTMLDivElement>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [cameras, setCameras] = useState<Camera[]>([]);
-  const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [isMounted, setIsMounted] = useState(false);
-  const scannerDivId = 'qr-scanner';
+  const isMounted = useRef(true);
+  const initCheckRef = useRef<NodeJS.Timeout | null>(null);
+  const cleanupInProgress = useRef(false);
+  const [scannerDivId] = useState(`qr-reader-${Math.random().toString(36).substring(7)}`);
+  const lastScannedCode = useRef<string | null>(null);
+  const lastScanTime = useRef<number>(0);
 
-  // First effect: Set mounted state
-  useEffect(() => {
-    setIsMounted(true);
-    return () => setIsMounted(false);
-  }, []);
+  const cleanup = async () => {
+    if (cleanupInProgress.current) {
+      console.log('Cleanup already in progress, skipping...');
+      return;
+    }
 
-  // Second effect: Get available cameras
-  useEffect(() => {
-    if (!isMounted) return;
-
-    const getCameras = async () => {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        setCameras(videoDevices);
-        if (videoDevices.length > 0) {
-          setCurrentCameraIndex(0);
-        }
-      } catch (err) {
-        toast.error('Failed to access camera devices');
+    try {
+      cleanupInProgress.current = true;
+      console.log('Cleaning up scanner...');
+      
+      // Clear initialization check interval
+      if (initCheckRef.current) {
+        clearInterval(initCheckRef.current);
+        initCheckRef.current = null;
       }
-    };
 
-    getCameras();
-  }, [isMounted]);
-
-  // Third effect: Initialize scanner when cameras are ready
-  useEffect(() => {
-    if (!isMounted || !elementRef.current) return;
-
-    const initializeScanner = async () => {
-      try {
-        // Check if we have cameras and valid index
-        if (!cameras.length || currentCameraIndex >= cameras.length) {
-          throw new Error('No valid camera found');
+      // First stop all video tracks
+      const videoElements = document.querySelectorAll('video');
+      for (const video of videoElements) {
+        try {
+          if (video.srcObject) {
+            const stream = video.srcObject as MediaStream;
+            const tracks = stream.getTracks();
+            tracks.forEach(track => {
+              try {
+                track.stop();
+              } catch (e) {
+                console.log('Track stop error:', e);
+              }
+            });
+            video.srcObject = null;
+          }
+        } catch (e) {
+          console.log('Video cleanup error:', e);
         }
-
-        // Get the selected camera
-        const camera = cameras[currentCameraIndex];
-        if (!camera?.id) {
-          throw new Error('Invalid camera ID');
-        }
-
-        // Stop existing scanner if any
-        if (scannerRef.current) {
-          await scannerRef.current.stop();
+      }
+      
+      // Then stop the scanner
+      if (scannerRef.current) {
+        try {
+          console.log('Stopping scanner...');
+          // First try to stop scanning
+          await scannerRef.current.stop().catch(e => {
+            console.log('Stop error (expected):', e);
+          });
+          
+          // Then try to clear
+          await scannerRef.current.clear().catch(e => {
+            console.log('Clear error (expected):', e);
+          });
+        } catch (e) {
+          console.log('Scanner cleanup error:', e);
+        } finally {
           scannerRef.current = null;
         }
+      }
 
-        // Create new scanner instance
+      // Remove video elements first
+      videoElements.forEach(video => {
+        try {
+          if (video.parentNode) {
+            video.parentNode.removeChild(video);
+          }
+        } catch (e) {
+          console.log('Video removal error:', e);
+        }
+      });
+
+      // Then remove scanner elements
+      try {
+        const container = document.getElementById(scannerDivId);
+        if (container && container.parentNode) {
+          container.innerHTML = '';
+          container.parentNode.removeChild(container);
+        }
+      } catch (e) {
+        console.log('Container removal error:', e);
+      }
+
+      // Finally remove any remaining scanner elements
+      document.querySelectorAll('[id^="qr-reader"]').forEach(element => {
+        try {
+          if (element.parentNode) {
+            element.innerHTML = '';
+            element.parentNode.removeChild(element);
+          }
+        } catch (e) {
+          console.log('Element removal error:', e);
+        }
+      });
+      
+      setIsInitializing(false);
+    } catch (error) {
+      console.error('Cleanup error:', error);
+    } finally {
+      cleanupInProgress.current = false;
+    }
+  };
+
+  // Effect to handle scanner open/close state
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    if (!isOpen) {
+      timeoutId = setTimeout(() => {
+        cleanup();
+      }, 100);
+    }
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [isOpen]);
+
+  const setupVideoElement = (videoElement: HTMLVideoElement) => {
+    videoElement.style.width = '100%';
+    videoElement.style.height = '100%';
+    videoElement.style.objectFit = 'cover';
+    videoElement.style.position = 'absolute';
+    videoElement.style.left = '0';
+    videoElement.style.top = '0';
+    videoElement.style.transform = 'none';
+    videoElement.style.display = 'block';
+    videoElement.style.opacity = '1';
+    videoElement.style.visibility = 'visible';
+    videoElement.setAttribute('playsinline', 'true');
+  };
+
+  const checkVideoReady = (container: HTMLElement | null) => {
+    if (!container) return false;
+    const videoElement = container.querySelector('video');
+    if (!videoElement) return false;
+
+    setupVideoElement(videoElement);
+    
+    // Simplified video readiness check
+    const isVideoReady = 
+      videoElement.readyState >= 2 && // HAVE_CURRENT_DATA or better
+      !videoElement.paused &&
+      videoElement.style.display !== 'none' &&
+      videoElement.style.visibility !== 'hidden';
+    
+    if (isVideoReady) {
+      console.log('Video is ready');
+      setIsInitializing(false);
+      if (onLoad) onLoad();
+      
+      // Ensure video is visible
+      requestAnimationFrame(() => {
+        if (videoElement) {
+          setupVideoElement(videoElement);
+        }
+      });
+      
+      return true;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    let isInitialized = false;
+    let timeoutId: NodeJS.Timeout;
+
+    const initializeScanner = async () => {
+      if (!isOpen || isInitialized || cleanupInProgress.current) return;
+      isInitialized = true;
+
+      // Add a small delay before initialization
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      try {
+        await cleanup();
+
+        let container = document.getElementById(scannerDivId);
+        if (!container && elementRef.current) {
+          container = document.createElement('div');
+          container.id = scannerDivId;
+          container.style.width = '100%';
+          container.style.height = '100%';
+          container.style.position = 'relative';
+          container.style.background = 'transparent';
+          elementRef.current.appendChild(container);
+        }
+
+        if (!container) {
+          throw new Error('Scanner container not found');
+        }
+
+        console.log('Initializing scanner...');
         const html5QrCode = new Html5Qrcode(scannerDivId);
         scannerRef.current = html5QrCode;
 
-        console.log('Starting camera:', camera.label, camera.id);
+        const containerWidth = container.clientWidth;
+        const qrboxSize = Math.min(containerWidth * 0.8, 250);
 
-        // Start scanning
+        const config = {
+          fps: 15,
+          qrbox: { width: qrboxSize, height: qrboxSize },
+          aspectRatio: 1.0,
+          disableFlip: false,
+          showTorchButtonIfSupported: false,
+          showZoomSliderIfSupported: false,
+          verbose: true,
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
+            Html5QrcodeSupportedFormats.AZTEC
+          ],
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+          }
+        };
+
+        // Simplified camera config
+        const cameraConfig = constraints?.deviceId 
+          ? { deviceId: constraints.deviceId }
+          : { facingMode };
+
+        console.log('Starting scanner with config:', { config, cameraConfig });
+
         await html5QrCode.start(
-          camera.id,
-          {
-            fps: 10,
-            qrbox: {
-              width: 250,
-              height: 250
-            },
-            aspectRatio: window.innerWidth < 768 ? 1.0 : 1.33,
-            videoConstraints: {
-              deviceId: camera.id,
-              facingMode: "environment",
-              width: { min: 640, ideal: 1280, max: 1920 },
-              height: { min: 480, ideal: 720, max: 1080 }
-            }
-          },
+          { ...cameraConfig },  // Spread to ensure we pass a new object
+          config,
           (decodedText) => {
-            if (isMounted) {
-              onScan(decodedText);
+            console.log('QR Code detected:', decodedText);
+            if (isMounted.current) {
+              // Immediately stop scanning when a valid code is detected
+              html5QrCode.stop().then(() => {
+                console.log('Scanner stopped after successful detection');
+                if (isMounted.current) {
+                  // Only process if we haven't recently scanned this code
+                  if (lastScannedCode.current === decodedText && 
+                      Date.now() - lastScanTime.current < 2000) {
+                    console.log('Duplicate scan detected, ignoring');
+                    return;
+                  }
+                  lastScannedCode.current = decodedText;
+                  lastScanTime.current = Date.now();
+                  
+                  // Notify parent component of successful scan
+                  console.log('Notifying parent of successful scan');
+                  onScan(decodedText);
+                }
+              }).catch(err => {
+                console.error('Error stopping scanner after detection:', err);
+              });
             }
           },
           (errorMessage) => {
-            if (typeof onError === 'function' && !errorMessage.includes('No QR code found')) {
-              onError(errorMessage);
+            // Only log non-standard errors
+            if (!errorMessage.includes('No MultiFormat Readers were able to detect the code') &&
+                !errorMessage.includes('No QR code found')) {
+              console.log('Scanning status:', errorMessage);
+              if (isMounted.current && onError) {
+                console.error('Scanner error:', errorMessage);
+                onError(errorMessage);
+              }
             }
           }
         );
 
-        setCameraError(null);
+        // Start checking for video readiness with a shorter timeout
+        let retries = 0;
+        const maxRetries = 20; // 2 seconds total
+        
+        initCheckRef.current = setInterval(() => {
+          if (checkVideoReady(container)) {
+            if (initCheckRef.current) {
+              clearInterval(initCheckRef.current);
+              initCheckRef.current = null;
+            }
+          } else if (retries >= maxRetries) {
+            if (initCheckRef.current) {
+              clearInterval(initCheckRef.current);
+              initCheckRef.current = null;
+            }
+            if (isMounted.current) {
+              setIsInitializing(false);
+              if (onError) onError('Video failed to initialize in time');
+            }
+          }
+          retries++;
+        }, 100);
 
       } catch (error) {
         console.error('Scanner initialization error:', error);
-        setCameraError(
-          'Unable to start camera. Please ensure you have granted camera permissions and try again.'
-        );
-      }
-    };
-
-    const timer = setTimeout(initializeScanner, 500);
-
-    return () => {
-      clearTimeout(timer);
-      if (scannerRef.current) {
-        scannerRef.current.stop()
-          .catch(() => {
-            // Silently handle stop errors as they're not critical
-          });
-      }
-    };
-  }, [cameras, currentCameraIndex, onScan, onError, isMounted]);
-
-  // Fourth effect: Apply styles
-  useEffect(() => {
-    if (!isMounted) return;
-
-    const style = document.createElement('style');
-    style.textContent = `
-      #${scannerDivId} {
-        width: 100%;
-        height: 100%;
-      }
-      #${scannerDivId} video {
-        width: 100% !important;
-        height: auto !important;
-        min-height: 300px !important;
-        max-height: 80vh !important;
-        border-radius: 12px;
-        object-fit: cover;
-        background: #000;
-      }
-      @media (max-width: 768px) {
-        #${scannerDivId} video {
-          min-height: 250px !important;
+        if (isMounted.current) {
+          setIsInitializing(false);
+          if (onError) {
+            onError(error instanceof Error ? error.message : 'Failed to initialize scanner');
+          }
         }
       }
-    `;
-    document.head.appendChild(style);
+    };
+
+    timeoutId = setTimeout(() => {
+      initializeScanner();
+    }, 100);
 
     return () => {
-      document.head.removeChild(style);
+      isMounted.current = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      cleanup();
     };
-  }, [isMounted]);
+  }, [scannerDivId, facingMode, constraints, onScan, onError, onLoad, isOpen]);
 
-  const handleSwitchCamera = async () => {
-    if (cameras.length <= 1) return;
-    const nextCameraIndex = (currentCameraIndex + 1) % cameras.length;
-    setCurrentCameraIndex(nextCameraIndex);
-  };
-
-  if (isInitializing) {
-    return (
-      <ScannerContainer>
-        <ScannerOverlay>
-          <ScannerMessage>
-            <FiLoader size={24} style={{ marginBottom: '10px', animation: 'spin 1s linear infinite' }} />
-            Initializing camera...
-          </ScannerMessage>
-        </ScannerOverlay>
-      </ScannerContainer>
-    );
-  }
-
-  if (cameraError) {
-    return (
-      <ScannerContainer>
-        <ScannerOverlay>
-          <ScannerMessage>
-            {cameraError}
-          </ScannerMessage>
-        </ScannerOverlay>
-      </ScannerContainer>
-    );
+  if (!isOpen) {
+    return null;
   }
 
   return (
-    <ScannerContainer
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.2 }}
-    >
-      <ScannerElement ref={elementRef} id={scannerDivId} />
-      {cameras.length > 1 && (
-        <SwitchCameraButton
-          onClick={handleSwitchCamera}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-        >
-          <FiCamera size={20} />
-        </SwitchCameraButton>
-      )}
+    <ScannerContainer>
+      <ScannerElement ref={elementRef}>
+        {isInitializing && (
+          <ScannerOverlay>
+            <ScannerMessage>
+              <FiLoader className="animate-spin" />
+              Initializing camera...
+            </ScannerMessage>
+          </ScannerOverlay>
+        )}
+      </ScannerElement>
     </ScannerContainer>
   );
 };
