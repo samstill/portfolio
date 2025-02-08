@@ -14,6 +14,8 @@ import TicketActions from '../../components/admin/TicketActions';
 import TicketValidation from '../TicketValidation';
 import { pageTransition, cardTransition, staggerContainer, overlayTransition } from '../../../shared/animations';
 import { useNavigate } from 'react-router-dom';
+import { ModelSelector } from '../../components/ModelSelector';
+import { useAI } from '../../../shared/contexts/AIContext';
 
 const TicketsGrid = styled.div`
   display: grid;
@@ -361,7 +363,37 @@ const LoadingAnimation = () => (
 
 const ITEMS_PER_PAGE = 12;
 
+const Header = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 25px;
+  gap: 20px;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+`;
+
+const HeaderLeft = styled.div`
+  flex: 1;
+`;
+
+const HeaderRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 15px;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    justify-content: center;
+  }
+`;
+
 const TicketAdminScreen: React.FC = () => {
+  const { selectedModel } = useAI();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
@@ -498,13 +530,20 @@ const TicketAdminScreen: React.FC = () => {
 
   return (
     <motion.div {...pageTransition}>
-      <SearchWrapper>
-        <SearchBar
-          placeholder="Search tickets by number, event, or user..."
-          onSearch={debouncedTicketSearch}
-          isLoading={isSearching}
-        />
-      </SearchWrapper>
+      <Header>
+        <HeaderLeft>
+          <SearchWrapper>
+            <SearchBar
+              placeholder="Search tickets by number, event, or user..."
+              onSearch={debouncedTicketSearch}
+              isLoading={isSearching}
+            />
+          </SearchWrapper>
+        </HeaderLeft>
+        <HeaderRight>
+          <ModelSelector />
+        </HeaderRight>
+      </Header>
 
       <QRScannerSection onTicketFound={(ticket) => handleTicketSelect(ticket)} />
 

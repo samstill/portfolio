@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import styled, { css } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -625,7 +627,20 @@ const ChatHistory = styled.div`
   }
 `;
 
-const Message = styled.div<{ $type: 'ai' | 'user' | 'info' }>`
+type MessageType = 'ai' | 'user' | 'info';
+
+interface MessageTimeProps {
+  $type: Exclude<MessageType, 'info'>;
+}
+
+const MessageTime = styled.div<MessageTimeProps>`
+  font-size: 0.7rem;
+  color: ${props => props.theme.text}80;
+  align-self: ${props => props.$type === 'user' ? 'flex-end' : 'flex-start'};
+  margin: 0 4px 8px;
+`;
+
+const Message = styled.div<{ $type: MessageType }>`
   align-self: ${props => props.$type === 'user' ? 'flex-end' : 'flex-start'};
   max-width: 85%;
   padding: 12px 16px;
@@ -696,14 +711,7 @@ const Message = styled.div<{ $type: 'ai' | 'user' | 'info' }>`
   }
 `;
 
-const MessageTime = styled.div<{ $type: 'ai' | 'user' }>`
-  font-size: 0.7rem;
-  color: ${props => props.theme.text}80;
-  align-self: ${props => props.$type === 'user' ? 'flex-end' : 'flex-start'};
-  margin: 0 4px 8px;
-`;
-
-const MessageWrapper = styled.div<{ $type: 'ai' | 'user' }>`
+const MessageWrapper = styled.div<{ $type: MessageType }>`
   display: flex;
   flex-direction: column;
   align-self: ${props => props.$type === 'user' ? 'flex-end' : 'flex-start'};
@@ -758,10 +766,39 @@ const ChatBubble = styled.div<{ $type: string }>`
   max-width: 70%;
 `;
 
-const formatDate = (date: Date) => {
-  const offset = date.getTimezoneOffset();
-  date = new Date(date.getTime() - (offset*60*1000));
-  return date.toISOString().slice(0, 16);
+const formatDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const ensureValidDateFormat = (dateStr: string): string => {
+  // If the date is already in the correct format, return it
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dateStr)) {
+    return dateStr;
+  }
+
+  try {
+    // If it's just a date without time, append default time (noon)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return `${dateStr}T12:00`;
+    }
+
+    // Try to parse the date and format it correctly
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return formatDate(date);
+    }
+
+    // If parsing fails, return current date/time
+    return formatDate(new Date());
+  } catch {
+    // If any error occurs, return current date/time
+    return formatDate(new Date());
+  }
 };
 
 const formatMarkdownDescription = (description: string) => {
@@ -819,6 +856,33 @@ const formatAIResponse = (text: string): string => {
     // Format lists with proper indentation
     .replace(/^[-•]\s/gm, '  • ');
 };
+
+// Add at the top of the file, after other imports
+interface ImportMetaEnv {
+  VITE_GOOGLE_API_KEY: string;
+  VITE_DEEPSEEK_API_KEY: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
+interface GoogleResponse {
+  id: string;
+  choices: [{
+    message: {
+      content: string;
+    };
+    event?: {
+      title: string;
+      description: string;
+      location: string;
+      price: number;
+      totalTickets: number;
+      suggestedDate?: string;
+    };
+  }];
+}
 
 const CreateEventScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -890,10 +954,12 @@ const CreateEventScreen: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    if (name === 'date') {
+      const formattedDate = ensureValidDateFormat(value);
+      setFormData(prev => ({ ...prev, [name]: formattedDate }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const generateWithAI = async (prompt: string) => {
@@ -903,39 +969,177 @@ const CreateEventScreen: React.FC = () => {
     return await generateWithDeepseek(prompt);
   };
 
-  // Updated generateWithGoogle function:
   async function generateWithGoogle(prompt: string): Promise<string> {
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${import.meta.env.VITE_GOOGLE_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{ text: prompt }]
-            }]
-          })
-        }
-      );
-      
+      const messages = [{
+        role: "user",
+        parts: [{
+          text: `You are an AI event planner assistant. Help create and modify event details.
+          Current event state:
+          Title: ${formData.title}
+          Description: ${formData.description}
+          Location: ${formData.location}
+          Price: ${formData.price}
+          Total Tickets: ${formData.totalTickets}
+          Date: ${formData.date}
+
+          Recent conversation:
+          ${chatMessages.slice(-5).map(msg => `${msg.type}: ${msg.content}`).join('\n')}
+
+          User request: ${prompt}
+
+          Respond with a JSON object in this format:
+          {
+            "event": {
+              "title": "Event Title",
+              "description": "Detailed description",
+              "location": "Venue address",
+              "price": number,
+              "totalTickets": number,
+              "suggestedDate": "YYYY-MM-DDTHH:mm"
+            },
+            "message": "Your conversational response here"
+          }`
+        }]
+      }];
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${import.meta.env.VITE_GOOGLE_API_KEY}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: messages,
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
+          }
+        })
+      });
+
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error?.message || response.statusText);
+        throw new Error(errorData.error?.message || `Google API error: ${response.statusText}`);
       }
 
       const data = await response.json();
-      // Extract the text content from Gemini's response
-      return data.candidates[0]?.content?.parts?.[0]?.text || 'No response from AI';
-    } catch (error: any) {
-      console.error("Google API error details:", error);
-      throw error;
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      // Try to parse the response as JSON
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const jsonResponse = JSON.parse(jsonMatch[0]);
+          
+          // Update form data with new values if they exist
+          const newFormData = { ...formData };
+          let changes: string[] = [];
+
+          if (jsonResponse.event) {
+            if (jsonResponse.event.title && jsonResponse.event.title !== formData.title) {
+              newFormData.title = jsonResponse.event.title;
+              changes.push(`📝 Title updated to: ${jsonResponse.event.title}`);
+            }
+            if (jsonResponse.event.description && jsonResponse.event.description !== formData.description) {
+              newFormData.description = jsonResponse.event.description;
+              changes.push(`📄 Description updated`);
+            }
+            if (jsonResponse.event.location && jsonResponse.event.location !== formData.location) {
+              newFormData.location = jsonResponse.event.location;
+              changes.push(`📍 Location updated to: ${jsonResponse.event.location}`);
+            }
+            if (jsonResponse.event.price && jsonResponse.event.price !== formData.price) {
+              newFormData.price = String(jsonResponse.event.price);
+              changes.push(`💰 Price updated to: ${jsonResponse.event.price}`);
+            }
+            if (jsonResponse.event.totalTickets && jsonResponse.event.totalTickets !== formData.totalTickets) {
+              newFormData.totalTickets = String(jsonResponse.event.totalTickets);
+              changes.push(`🎟️ Total tickets updated to: ${jsonResponse.event.totalTickets}`);
+            }
+            if (jsonResponse.event.suggestedDate) {
+              const formattedDate = ensureValidDateFormat(jsonResponse.event.suggestedDate);
+              newFormData.date = formattedDate;
+              changes.push(`📅 Date updated to: ${new Date(formattedDate).toLocaleDateString()}`);
+            }
+          }
+
+          setFormData(newFormData);
+
+          // Format the response message
+          let responseMessage = jsonResponse.message || content;
+          if (changes.length > 0) {
+            responseMessage += '\n\nChanges made:\n' + changes.join('\n');
+          }
+
+          return responseMessage;
+        }
+      } catch (error) {
+        console.error('Error parsing Google API response:', error);
+      }
+
+      return content;
+    } catch (error) {
+      console.error('Error calling Google API:', error);
+      throw new Error('Failed to generate with Google AI');
     }
   }
 
   // Update generateWithDeepseek similarly to log error details
   async function generateWithDeepseek(prompt: string): Promise<string> {
     try {
+      // Limit the chat history to last 10 messages to prevent context overflow
+      const recentMessages = chatMessages.slice(-10);
+      
+      // Create messages array with filtered conversation history
+      const messages = [
+        {
+          role: 'system',
+          content: `You are an event planning assistant. Always respond with a complete JSON object in this exact format, and nothing else before or after the JSON:
+          {
+            "title": "Event Title",
+            "description": "Detailed markdown description with sections",
+            "location": "Venue with full address",
+            "price": number,
+            "totalTickets": number,
+            "suggestedDate": "YYYY-MM-DDTHH:mm"
+          }
+          
+          For follow-up questions and modifications:
+          1. Maintain context from previous messages
+          2. Update only the fields that are relevant to the user's request
+          3. Keep other fields unchanged from the previous state
+          4. Always return the complete event object with all fields
+          5. Keep the response concise and within token limits`
+        },
+        // Add current form state as context
+        {
+          role: 'system',
+          content: `Current event state: ${JSON.stringify({
+            title: formData.title,
+            description: formData.description,
+            location: formData.location,
+            price: parseFloat(formData.price) || 0,
+            totalTickets: parseInt(formData.totalTickets) || 0,
+            suggestedDate: formData.date
+          })}`
+        },
+        // Add filtered previous messages for context
+        ...recentMessages.map(msg => ({
+          role: msg.type === 'user' ? 'user' : 'assistant',
+          content: msg.type === 'user' ? msg.content : 
+            // For assistant messages, try to extract only the relevant parts
+            msg.content.includes('Event Updated Successfully') ? 
+              msg.content.split('Changes made:')[1]?.split('\n').slice(0, -1).join('\n') || msg.content : 
+              msg.content
+        })),
+        {
+          role: 'user',
+          content: `${prompt}\nRespond only with the JSON object, no additional text.`
+        }
+      ];
+
       const response = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
@@ -945,24 +1149,7 @@ const CreateEventScreen: React.FC = () => {
         },
         body: JSON.stringify({
           model: 'deepseek-chat',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an event planning assistant. Always respond with a JSON object in this exact format:
-              {
-                "title": "Event Title",
-                "description": "Detailed markdown description with sections",
-                "location": "Venue with full address",
-                "price": number,
-                "totalTickets": number,
-                "suggestedDate": "YYYY-MM-DDTHH:mm" (future date in ISO format)
-              }`
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
+          messages,
           temperature: 0.7,
           max_tokens: 2000,
           stream: false
@@ -975,7 +1162,27 @@ const CreateEventScreen: React.FC = () => {
       }
 
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || 'No response from AI';
+      const content = data.choices?.[0]?.message?.content || '';
+      
+      // Clean up the response to ensure valid JSON
+      const cleanedContent = content.trim()
+        .replace(/^```json\s*/, '') // Remove leading JSON code block markers
+        .replace(/\s*```$/, '')     // Remove trailing code block markers
+        .replace(/^\s*\{/, '{')     // Ensure clean opening brace
+        .replace(/\}\s*$/, '}');    // Ensure clean closing brace
+
+      // Validate JSON structure
+      try {
+        JSON.parse(cleanedContent);
+        return cleanedContent;
+      } catch (parseError) {
+        // If parsing fails, try to extract JSON using regex
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return jsonMatch[0];
+        }
+        throw new Error('Invalid JSON response from API');
+      }
     } catch (error: any) {
       console.error("Deepseek API error details:", error);
       throw error;
@@ -1000,29 +1207,35 @@ const CreateEventScreen: React.FC = () => {
       }]);
 
       try {
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        // First try to find a JSON object in the response
+        const jsonMatch = response.match(/\{[\s\S]*?\}/);
         if (jsonMatch) {
-          const eventData = JSON.parse(jsonMatch[0]);
+          const jsonStr = jsonMatch[0];
+          const eventData = JSON.parse(jsonStr);
           
-          // Update form fields
-          setFormData({
-            title: eventData.title || '',
-            description: eventData.description || '',
-            date: eventData.suggestedDate || '',
-            location: eventData.location || '',
-            price: String(eventData.price || '0'),
-            totalTickets: String(eventData.totalTickets || '100')
-          });
+          // Update form fields with proper date formatting
+          const formattedDate = eventData.suggestedDate ? 
+            new Date(eventData.suggestedDate).toISOString().slice(0, 16) : // Format as YYYY-MM-DDTHH:mm
+            '';
+
+          setFormData(prevData => ({
+            title: eventData.title || prevData.title,
+            description: eventData.description || prevData.description,
+            date: formattedDate,
+            location: eventData.location || prevData.location,
+            price: String(eventData.price || prevData.price || '0'),
+            totalTickets: String(eventData.totalTickets || prevData.totalTickets || '100')
+          }));
 
           // Format the response message with better structure
           const formattedResponse = formatAIResponse(
             `✨ **Event Created Successfully!**\n\n` +
             `📌 **Title**\n${eventData.title}\n\n` +
             `📍 **Location**\n${eventData.location}\n\n` +
-            `📅 **Date & Time**\n${new Date(eventData.suggestedDate).toLocaleString()}\n\n` +
-            `💰 **Price**\n₹${eventData.price}\n\n` +
-            `🎟️ **Total Tickets**\n${eventData.totalTickets}\n\n` +
-            `📝 **Description**\n${eventData.description.substring(0, 150)}...\n\n` +
+            `📅 **Date & Time**\n${formattedDate ? new Date(formattedDate).toLocaleString() : 'Not specified'}\n\n` +
+            `💰 **Price**\n₹${eventData.price || '0'}\n\n` +
+            `🎟️ **Total Tickets**\n${eventData.totalTickets || '100'}\n\n` +
+            `📝 **Description**\n${(eventData.description || '').substring(0, 150)}...\n\n` +
             `I've filled in all the details in the form. Feel free to review and adjust anything!`
           );
 
@@ -1032,13 +1245,19 @@ const CreateEventScreen: React.FC = () => {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }]);
         } else {
-          throw new Error('No valid JSON found in response');
+          // If no JSON found, just display the response as is
+          setChatMessages(prev => [...prev, {
+            type: 'ai',
+            content: formatAIResponse(response),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }]);
         }
       } catch (parseError) {
         console.error('Error parsing AI response:', parseError);
+        // If JSON parsing fails, still show the response to maintain conversation flow
         setChatMessages(prev => [...prev, {
           type: 'ai',
-          content: response,
+          content: formatAIResponse(response),
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
       }
@@ -1075,11 +1294,78 @@ const CreateEventScreen: React.FC = () => {
       setIsGenerating(true);
       const response = await generateWithAI(userMessage);
       
-      setChatMessages(prev => [...prev, { 
-        type: 'ai', 
-        content: formatAIResponse(response),
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
+      try {
+        // First, try to find a JSON object in the response
+        const jsonMatch = response.match(/\{[\s\S]*?\}/);
+        if (jsonMatch) {
+          const jsonStr = jsonMatch[0];
+          const eventData = JSON.parse(jsonStr);
+          
+          // Store current form data for comparison
+          const currentFormData = { ...formData };
+          
+          // Format the date properly
+          const formattedDate = eventData.suggestedDate ? 
+            new Date(eventData.suggestedDate).toISOString().slice(0, 16) : // Format as YYYY-MM-DDTHH:mm
+            currentFormData.date;
+
+          // Update form fields with new data while preserving existing values
+          setFormData(prevData => ({
+            title: eventData.title || prevData.title,
+            description: eventData.description || prevData.description,
+            date: formattedDate,
+            location: eventData.location || prevData.location,
+            price: String(eventData.price || prevData.price || '0'),
+            totalTickets: String(eventData.totalTickets || prevData.totalTickets || '100')
+          }));
+
+          // Build changes array for better formatting
+          const changes = [];
+          if (eventData.title && eventData.title !== currentFormData.title) 
+            changes.push(`📌 **Title**: ${eventData.title}`);
+          if (eventData.location && eventData.location !== currentFormData.location) 
+            changes.push(`📍 **Location**: ${eventData.location}`);
+          if (eventData.suggestedDate && formattedDate !== currentFormData.date) 
+            changes.push(`📅 **Date & Time**: ${new Date(formattedDate).toLocaleString()}`);
+          if (eventData.price && String(eventData.price) !== currentFormData.price) 
+            changes.push(`💰 **Price**: ₹${eventData.price}`);
+          if (eventData.totalTickets && String(eventData.totalTickets) !== currentFormData.totalTickets) 
+            changes.push(`🎟️ **Total Tickets**: ${eventData.totalTickets}`);
+          if (eventData.description && eventData.description !== currentFormData.description) 
+            changes.push(`📝 **Description Update**: ${eventData.description.substring(0, 150)}...`);
+
+          // Get the conversational part of the response (text before or after the JSON)
+          let conversationalResponse = response.replace(jsonStr, '').trim();
+          
+          if (!conversationalResponse) {
+            conversationalResponse = changes.length > 0 
+              ? `✨ **Event Updated Successfully!**\n\nChanges made:\n${changes.join('\n')}\n\nAll changes have been applied to the form. Feel free to review and make any additional adjustments!`
+              : `No changes were needed. The event details already match your request.`;
+          }
+
+          // Format and add the response to chat
+          setChatMessages(prev => [...prev, {
+            type: 'ai',
+            content: formatAIResponse(conversationalResponse),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }]);
+        } else {
+          // If no JSON found, just display the response as is
+          setChatMessages(prev => [...prev, {
+            type: 'ai',
+            content: formatAIResponse(response),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }]);
+        }
+      } catch (parseError) {
+        console.error('Error parsing AI response:', parseError);
+        // If JSON parsing fails, still show the response to maintain conversation flow
+        setChatMessages(prev => [...prev, {
+          type: 'ai',
+          content: formatAIResponse(response),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }]);
+      }
     } catch (error) {
       console.error('Chat error:', error);
       setChatMessages(prev => [...prev, {
@@ -1091,6 +1377,18 @@ const CreateEventScreen: React.FC = () => {
       setIsGenerating(false);
     }
   };
+
+  // Update the chat history rendering to use the new renderMessage function
+  const renderMessage = (msg: { type: MessageType; content: string; timestamp?: string }, index: number) => (
+    <MessageWrapper key={index} $type={msg.type}>
+      <Message $type={msg.type} dangerouslySetInnerHTML={{ __html: msg.type === 'user' ? msg.content : formatAIResponse(msg.content) }} />
+      {msg.type !== 'info' && msg.timestamp && (
+        <MessageTime $type={msg.type}>
+          {msg.timestamp}
+        </MessageTime>
+      )}
+    </MessageWrapper>
+  );
 
   return (
     <Container>
@@ -1260,19 +1558,7 @@ const CreateEventScreen: React.FC = () => {
                 >
                   <ChatContainer>
                     <ChatHistory ref={chatHistoryRef}>
-                      {chatMessages.map((msg, index) => (
-                        <MessageWrapper key={index} $type={msg.type}>
-                          <Message 
-                            $type={msg.type}
-                            dangerouslySetInnerHTML={{ 
-                              __html: msg.type === 'user' ? msg.content : formatAIResponse(msg.content)
-                            }}
-                          />
-                          <MessageTime $type={msg.type}>
-                            {msg.timestamp}
-                          </MessageTime>
-                        </MessageWrapper>
-                      ))}
+                      {chatMessages.map((msg, index) => renderMessage(msg, index))}
                     </ChatHistory>
                     <InputContainer>
                       <ChatInput
