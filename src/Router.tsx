@@ -9,6 +9,52 @@ import {
 import styled, { keyframes } from 'styled-components';
 import { ProtectedRoute, PublicOnlyRoute } from './shared/components/ProtectedRoute';
 import { AdminRoute } from './shared/components/AdminRoute';
+import { ErrorBoundary } from 'react-error-boundary';
+
+// Lazy load all screens with error boundaries
+const withErrorBoundary = (Component: React.LazyExoticComponent<React.FC>) => (
+  <ErrorBoundary
+    fallback={
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '100vh',
+        color: 'white',
+        textAlign: 'center',
+        padding: '20px'
+      }}>
+        <h2>Something went wrong</h2>
+        <button 
+          onClick={() => window.location.reload()}
+          style={{
+            padding: '10px 20px',
+            marginTop: '20px',
+            background: '#4a6cf7',
+            border: 'none',
+            borderRadius: '8px',
+            color: 'white',
+            cursor: 'pointer'
+          }}
+        >
+          Refresh
+        </button>
+      </div>
+    }
+  >
+    <Suspense fallback={
+      <LoadingSpinner>
+        <SpinnerWrapper>
+          <Spinner />
+        </SpinnerWrapper>
+        <LoadingText>Loading...</LoadingText>
+      </LoadingSpinner>
+    }>
+      <Component />
+    </Suspense>
+  </ErrorBoundary>
+);
 
 // Lazy load all screens
 const HomeScreen = React.lazy(() => import('./presentation/screens/HomeScreen'));
@@ -112,208 +158,136 @@ const LoadingText = styled.div`
 
 const router = createBrowserRouter(
   createRoutesFromElements(
-    <Route>
+    <Route errorElement={withErrorBoundary(NotFoundScreen)}>
       {/* Public Routes */}
-      <Route index element={
-        <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-          <HomeScreen />
-        </Suspense>
-      } />
+      <Route index element={withErrorBoundary(HomeScreen)} />
 
       {/* Auth Routes - Only accessible when NOT logged in */}
       <Route path="login" element={
         <PublicOnlyRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <LoginScreen />
-          </Suspense>
+          {withErrorBoundary(LoginScreen)}
         </PublicOnlyRoute>
       } />
       <Route path="signup" element={
         <PublicOnlyRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <SignUpScreen />
-          </Suspense>
+          {withErrorBoundary(SignUpScreen)}
         </PublicOnlyRoute>
       } />
       <Route path="reset-password" element={
         <PublicOnlyRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <ResetPasswordScreen />
-          </Suspense>
+          {withErrorBoundary(ResetPasswordScreen)}
         </PublicOnlyRoute>
       } />
 
       {/* Protected Routes - Require Authentication */}
       <Route path="events" element={
         <ProtectedRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <EventsScreen />
-          </Suspense>
+          {withErrorBoundary(EventsScreen)}
         </ProtectedRoute>
       } />
       <Route path="events/:id" element={
         <ProtectedRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <EventDetailScreen />
-          </Suspense>
+          {withErrorBoundary(EventDetailScreen)}
         </ProtectedRoute>
       } />
       <Route path="events/:id/book" element={
         <ProtectedRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <BookingScreen />
-          </Suspense>
+          {withErrorBoundary(BookingScreen)}
         </ProtectedRoute>
       } />
       <Route path="profile" element={
         <ProtectedRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <ProfileScreen />
-          </Suspense>
+          {withErrorBoundary(ProfileScreen)}
         </ProtectedRoute>
       } />
       <Route path="my-tickets" element={
         <ProtectedRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <MyTicketsScreen />
-          </Suspense>
+          {withErrorBoundary(MyTicketsScreen)}
         </ProtectedRoute>
       } />
       <Route path="/tickets/:ticketId" element={
         <ProtectedRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <TicketScreen />
-          </Suspense>
+          {withErrorBoundary(TicketScreen)}
         </ProtectedRoute>
       } />
 
       {/* Admin Routes */}
       <Route path="admin" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <AdminScreen />
-          </Suspense>
+          {withErrorBoundary(AdminScreen)}
         </AdminRoute>
       } />
       <Route path="admin/users" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <AdminScreen />
-          </Suspense>
+          {withErrorBoundary(AdminScreen)}
         </AdminRoute>
       } />
       <Route path="admin/tickets" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <AdminScreen />
-          </Suspense>
+          {withErrorBoundary(AdminScreen)}
         </AdminRoute>
       } />
       <Route path="admin/users/:userId" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <UserDetailScreen />
-          </Suspense>
+          {withErrorBoundary(UserDetailScreen)}
         </AdminRoute>
       } />
       <Route path="admin/users/:userId/tickets" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <UserTicketsScreen />
-          </Suspense>
+          {withErrorBoundary(UserTicketsScreen)}
         </AdminRoute>
       } />
       <Route path="admin/users/:userId/transactions" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <UserTransactionsScreen />
-          </Suspense>
+          {withErrorBoundary(UserTransactionsScreen)}
         </AdminRoute>
       } />
       <Route path="admin/tickets/:ticketId/validate" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <TicketValidationScreen />
-          </Suspense>
+          {withErrorBoundary(TicketValidationScreen)}
         </AdminRoute>
       } />
       <Route path="events/create" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <CreateEventScreen />
-          </Suspense>
+          {withErrorBoundary(CreateEventScreen)}
         </AdminRoute>
       } />
       <Route path="events/:id/edit" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <EditEventScreen />
-          </Suspense>
+          {withErrorBoundary(EditEventScreen)}
         </AdminRoute>
       } />
       <Route path="validate-ticket/:ticketId" element={
         <AdminRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <ValidateTicketScreen />
-          </Suspense>
+          {withErrorBoundary(ValidateTicketScreen)}
         </AdminRoute>
       } />
 
       {/* Messenger Routes */}
       <Route path="messenger" element={
         <ProtectedRoute>
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <MessengerScreen />
-          </Suspense>
+          {withErrorBoundary(MessengerScreen)}
         </ProtectedRoute>
       }>
         <Route index element={<Navigate to="search" />} />
-        <Route path="search" element={<Suspense fallback={<div>Loading...</div>}><UserSearchScreen /></Suspense>} />
-        <Route path="chat/:conversationId" element={<Suspense fallback={<div>Loading...</div>}><ChatScreen /></Suspense>} />
+        <Route path="search" element={withErrorBoundary(UserSearchScreen)} />
+        <Route path="chat/:conversationId" element={withErrorBoundary(ChatScreen)} />
       </Route>
 
       {/* Error and Status Routes */}
-      <Route path="unauthorized" element={
-        <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-          <UnauthorizedScreen />
-        </Suspense>
-      } />
-      <Route path="/payment-error" element={
-        <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-          <PaymentErrorScreen />
-        </Suspense>
-      } />
+      <Route path="unauthorized" element={withErrorBoundary(UnauthorizedScreen)} />
+      <Route path="/payment-error" element={withErrorBoundary(PaymentErrorScreen)} />
 
       {/* Legal Routes */}
       <Route path="legal">
-        <Route path="terms-conditions" element={
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <TermsConditionsScreen />
-          </Suspense>
-        } />
-        <Route path="privacy-policy" element={
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <PrivacyPolicyScreen />
-          </Suspense>
-        } />
-        <Route path="refund-policy" element={
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <RefundPolicyScreen />
-          </Suspense>
-        } />
-        <Route path="about-us" element={
-          <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-            <AboutUsScreen />
-          </Suspense>
-        } />
+        <Route path="terms-conditions" element={withErrorBoundary(TermsConditionsScreen)} />
+        <Route path="privacy-policy" element={withErrorBoundary(PrivacyPolicyScreen)} />
+        <Route path="refund-policy" element={withErrorBoundary(RefundPolicyScreen)} />
+        <Route path="about-us" element={withErrorBoundary(AboutUsScreen)} />
       </Route>
 
       {/* 404 Route */}
-      <Route path="*" element={
-        <Suspense fallback={<LoadingSpinner><SpinnerWrapper><Spinner /></SpinnerWrapper><LoadingText>Loading...</LoadingText></LoadingSpinner>}>
-          <NotFoundScreen />
-        </Suspense>
-      } />
+      <Route path="*" element={withErrorBoundary(NotFoundScreen)} />
     </Route>
   ),
   {
