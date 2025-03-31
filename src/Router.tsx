@@ -210,6 +210,11 @@ const router = createBrowserRouter(
           {withErrorBoundary(TicketScreen)}
         </ProtectedRoute>
       } />
+      <Route path="messages" element={
+        <ProtectedRoute>
+          {withErrorBoundary(MessagesScreen)}
+        </ProtectedRoute>
+      } />
 
       {/* Admin Routes */}
       <Route path="admin" element={
