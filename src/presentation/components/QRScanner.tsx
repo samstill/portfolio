@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats, Html5QrcodeScanType, Html5QrcodeScannerState } from 'html5-qrcode';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { FiLoader } from 'react-icons/fi';
@@ -35,24 +35,11 @@ const ScannerElement = styled.div`
   & > div {
     width: 100% !important;
     height: 100% !important;
-    position: relative !important;
-    overflow: hidden !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: transparent !important;
-
-    & > img, & > button {
-      display: none !important;
+    
+    video {
+      object-fit: cover !important;
+      transform: none !important;
     }
-  }
-
-  video {
-    position: absolute !important;
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: cover !important;
-    transform: none !important;
   }
 `;
 
@@ -106,102 +93,29 @@ const QRScanner: React.FC<QRScannerProps> = ({
   const [scannerDivId] = useState(`qr-reader-${Math.random().toString(36).substring(7)}`);
   const lastScannedCode = useRef<string | null>(null);
   const lastScanTime = useRef<number>(0);
+  const [cameraError, setCameraError] = useState(false);
+  const scanDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const cleanup = async () => {
-    if (cleanupInProgress.current) {
-      console.log('Cleanup already in progress, skipping...');
-      return;
-    }
+    if (cleanupInProgress.current) return;
+    cleanupInProgress.current = true;
 
     try {
-      cleanupInProgress.current = true;
-      console.log('Cleaning up scanner...');
-      
-      // Clear initialization check interval
-      if (initCheckRef.current) {
-        clearInterval(initCheckRef.current);
-        initCheckRef.current = null;
+      if (scannerRef.current?.getState() === Html5QrcodeScannerState.SCANNING) {
+        await scannerRef.current.stop().catch(console.error);
       }
-
-      // First stop all video tracks
+      
       const videoElements = document.querySelectorAll('video');
-      for (const video of videoElements) {
-        try {
-          if (video.srcObject) {
-            const stream = video.srcObject as MediaStream;
-            const tracks = stream.getTracks();
-            tracks.forEach(track => {
-              try {
-                track.stop();
-              } catch (e) {
-                console.log('Track stop error:', e);
-              }
-            });
-            video.srcObject = null;
-          }
-        } catch (e) {
-          console.log('Video cleanup error:', e);
-        }
-      }
-      
-      // Then stop the scanner
-      if (scannerRef.current) {
-        try {
-          console.log('Stopping scanner...');
-          // First try to stop scanning
-          await scannerRef.current.stop().catch(e => {
-            console.log('Stop error (expected):', e);
-          });
-          
-          // Then try to clear
-          await scannerRef.current.clear().catch(e => {
-            console.log('Clear error (expected):', e);
-          });
-        } catch (e) {
-          console.log('Scanner cleanup error:', e);
-        } finally {
-          scannerRef.current = null;
-        }
-      }
-
-      // Remove video elements first
       videoElements.forEach(video => {
-        try {
-          if (video.parentNode) {
-            video.parentNode.removeChild(video);
-          }
-        } catch (e) {
-          console.log('Video removal error:', e);
-        }
+        const stream = video.srcObject as MediaStream;
+        stream?.getTracks().forEach(track => track.stop());
       });
 
-      // Then remove scanner elements
-      try {
-        const container = document.getElementById(scannerDivId);
-        if (container && container.parentNode) {
-          container.innerHTML = '';
-          container.parentNode.removeChild(container);
-        }
-      } catch (e) {
-        console.log('Container removal error:', e);
-      }
-
-      // Finally remove any remaining scanner elements
-      document.querySelectorAll('[id^="qr-reader"]').forEach(element => {
-        try {
-          if (element.parentNode) {
-            element.innerHTML = '';
-            element.parentNode.removeChild(element);
-          }
-        } catch (e) {
-          console.log('Element removal error:', e);
-        }
-      });
-      
-      setIsInitializing(false);
+      await scannerRef.current?.clear();
     } catch (error) {
       console.error('Cleanup error:', error);
     } finally {
+      scannerRef.current = null;
       cleanupInProgress.current = false;
     }
   };
@@ -228,7 +142,8 @@ const QRScanner: React.FC<QRScannerProps> = ({
     videoElement.style.position = 'absolute';
     videoElement.style.left = '0';
     videoElement.style.top = '0';
-    videoElement.style.transform = 'none';
+    videoElement.style.transform = 'scale(1.1)';
+    videoElement.style.filter = 'contrast(1.2) brightness(1.1)';
     videoElement.style.display = 'block';
     videoElement.style.opacity = '1';
     videoElement.style.visibility = 'visible';
@@ -300,23 +215,19 @@ const QRScanner: React.FC<QRScannerProps> = ({
         scannerRef.current = html5QrCode;
 
         const containerWidth = container.clientWidth;
-        const qrboxSize = Math.min(containerWidth * 0.8, 250);
+        const qrboxSize = Math.min(containerWidth * 0.8, 300);
 
         const config = {
-          fps: 15,
-          qrbox: { width: qrboxSize, height: qrboxSize },
+          fps: 10,
+          qrbox: { 
+            width: Math.min(containerWidth * 0.8, 300), 
+            height: Math.min(containerWidth * 0.8, 300) 
+          },
           aspectRatio: 1.0,
-          disableFlip: false,
-          showTorchButtonIfSupported: false,
-          showZoomSliderIfSupported: false,
-          verbose: true,
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.QR_CODE,
-            Html5QrcodeSupportedFormats.DATA_MATRIX,
-            Html5QrcodeSupportedFormats.AZTEC
-          ],
+          disableFlip: true,
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
           experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
+            useBarCodeDetectorIfSupported: false
           }
         };
 
@@ -328,40 +239,50 @@ const QRScanner: React.FC<QRScannerProps> = ({
         console.log('Starting scanner with config:', { config, cameraConfig });
 
         await html5QrCode.start(
-          { ...cameraConfig },  // Spread to ensure we pass a new object
-          config,
+          { ...cameraConfig },
+          {
+            ...config,
+            rememberLastUsedCamera: false,
+            supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+          },
           (decodedText) => {
+            if (scanDebounceRef.current) return;
+            
             console.log('QR Code detected:', decodedText);
-            if (isMounted.current) {
-              // Immediately stop scanning when a valid code is detected
-              html5QrCode.stop().then(() => {
-                console.log('Scanner stopped after successful detection');
-                if (isMounted.current) {
-                  // Only process if we haven't recently scanned this code
-                  if (lastScannedCode.current === decodedText && 
-                      Date.now() - lastScanTime.current < 2000) {
-                    console.log('Duplicate scan detected, ignoring');
-                    return;
-                  }
-                  lastScannedCode.current = decodedText;
-                  lastScanTime.current = Date.now();
-                  
-                  // Notify parent component of successful scan
-                  console.log('Notifying parent of successful scan');
-                  onScan(decodedText);
-                }
-              }).catch(err => {
-                console.error('Error stopping scanner after detection:', err);
-              });
+            if (!isMounted.current) return;
+            
+            // Add timestamp validation
+            const now = Date.now();
+            if (lastScannedCode.current === decodedText && now - lastScanTime.current < 1000) {
+              console.log('Duplicate scan blocked');
+              return;
             }
+            
+            // Validate basic QR code structure
+            if (typeof decodedText !== 'string' || decodedText.length < 10) {
+              console.warn('Invalid QR code format');
+              return;
+            }
+
+            lastScannedCode.current = decodedText;
+            lastScanTime.current = now;
+
+            scanDebounceRef.current = setTimeout(() => {
+              scanDebounceRef.current = null;
+            }, 500); // 500ms debounce window
+
+            onScan(decodedText);
           },
           (errorMessage) => {
-            // Only log non-standard errors
-            if (!errorMessage.includes('No MultiFormat Readers were able to detect the code') &&
-                !errorMessage.includes('No QR code found')) {
-              console.log('Scanning status:', errorMessage);
+            const suppressedErrors = [
+              'No MultiFormat Readers were able to detect the code',
+              'No QR code found',
+              'Video stream has ended'
+            ];
+            
+            if (!suppressedErrors.some(e => errorMessage.includes(e))) {
+              console.debug('Scanner error:', errorMessage);
               if (isMounted.current && onError) {
-                console.error('Scanner error:', errorMessage);
                 onError(errorMessage);
               }
             }
@@ -426,10 +347,25 @@ const QRScanner: React.FC<QRScannerProps> = ({
           <ScannerOverlay>
             <ScannerMessage>
               <FiLoader className="animate-spin" />
-              Initializing camera...
+              {!cameraError ? 'Initializing camera...' : 'Camera Error'}
             </ScannerMessage>
           </ScannerOverlay>
         )}
+        <motion.div
+          style={{
+            position: 'absolute',
+            top: '10%',
+            width: '80%',
+            height: 2,
+            background: '#4a6cf7'
+          }}
+          animate={{ y: ['0%', '80%', '0%'] }}
+          transition={{
+            duration: 2,
+            repeat: Infinity,
+            ease: 'easeInOut'
+          }}
+        />
       </ScannerElement>
     </ScannerContainer>
   );

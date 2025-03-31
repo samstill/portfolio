@@ -275,7 +275,7 @@ const UserAdminScreen: React.FC = () => {
   }, [page]);
 
   const debouncedUserSearch = useMemo(
-    () => debounce((searchText: string) => fetchUsers(searchText, true), 500),
+    () => debounce((searchText: string) => fetchUsers(searchText, true), 300),
     [fetchUsers]
   );
 

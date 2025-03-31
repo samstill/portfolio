@@ -5,6 +5,33 @@
     --font-primary: 'Inter', sans-serif;
 }
 
+/* Theme variables */
+:root[data-theme="light"] {
+    --color-background: #ffffff;
+    --color-text: #1a1b25;
+    --color-text-secondary: #666;
+    --color-primary: #4a6cf7;
+    --color-border: rgba(225, 228, 232, 0.4);
+    --color-shadow: rgba(0, 0, 0, 0.05);
+    --color-card-shadow: rgba(0, 0, 0, 0.02);
+    --color-bubble-mine: rgba(74, 108, 247, 0.9);
+    --color-bubble-other: rgba(255, 255, 255, 0.8);
+    --color-background-active: rgba(255, 255, 255, 0.9);
+}
+
+:root[data-theme="dark"] {
+    --color-background: #191c27;
+    --color-text: #e1e5ee;
+    --color-text-secondary: #a8b0c5;
+    --color-primary: #6e8efb;
+    --color-border: rgba(65, 70, 90, 0.6);
+    --color-shadow: rgba(0, 0, 0, 0.15);
+    --color-card-shadow: rgba(0, 0, 0, 0.05);
+    --color-bubble-mine: rgba(74, 108, 247, 0.9);
+    --color-bubble-other: rgba(41, 45, 62, 0.9);
+    --color-background-active: rgba(42, 46, 60, 0.9);
+}
+
 /* Reset and base styles */
 * {
     font-family: var(--font-primary);
@@ -12,6 +39,9 @@
 
 body {
     font-family: var(--font-primary);
+    background-color: var(--color-background);
+    color: var(--color-text);
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Typography scale */
@@ -19,10 +49,20 @@ h1, h2, h3, h4, h5, h6,
 .text-heading {
     font-family: var(--font-primary);
     font-weight: 700;
+    color: var(--color-text);
 }
 
 p, span, a, div,
 .text-body {
     font-family: var(--font-primary);
     font-weight: 400;
+    color: var(--color-text);
+}
+
+/* Theme transition utilities */
+.theme-transition {
+    transition: background-color 0.3s ease,
+                color 0.3s ease,
+                border-color 0.3s ease,
+                box-shadow 0.3s ease;
 }

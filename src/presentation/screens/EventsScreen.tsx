@@ -23,6 +23,8 @@ import { EventsFilter } from '../components/events/EventsFilter';
 import styled from 'styled-components';
 import { eventService } from '../../firebase/services/eventService';
 import Avatar from '../components/common/Avatar';
+import { Link } from 'react-router-dom';
+import { FaEnvelope, FaPlus } from 'react-icons/fa';
 
 const MenuOverlay = styled(motion.div)`
   position: fixed;
@@ -150,6 +152,32 @@ const AvatarWrapper = styled.div`
   @media (max-width: 768px) {
     width: 90px;
     height: 90px;
+  }
+`;
+
+const FloatingMessengerButton = styled(Link)`
+  position: fixed;
+  bottom: 80px;
+  right: 30px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: #4a6cf7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s, background-color 0.2s;
+  z-index: 10;
+  
+  &:hover {
+    transform: scale(1.05);
+    background-color: #3a5ce5;
+  }
+  
+  svg {
+    font-size: 1.5rem;
   }
 `;
 
@@ -452,6 +480,18 @@ const EventsScreen: React.FC = () => {
           </EventsGrid>
         )}
       </AnimatePresence>
+
+      {currentUser && (
+        <FloatingMessengerButton to="/messenger" title="Open Messenger">
+          <FaEnvelope />
+        </FloatingMessengerButton>
+      )}
+
+      {currentUser?.isAdmin && (
+        <Link to="/create-event" className="create-event-button">
+          <FaPlus />
+        </Link>
+      )}
     </Container>
   );
 };

@@ -1,18 +1,28 @@
 import QRCode from 'qrcode';
 
 export const generateQR = async (text: string): Promise<string> => {
+  // Validate input format
+  if (!text || typeof text !== 'string') {
+    throw new Error('Invalid QR code content');
+  }
+  
+  // Enforce minimum content length
+  if (text.length < 10) {
+    throw new Error('QR code content too short');
+  }
+
   try {
     // Generate QR code as data URL with enhanced options
     const url = await QRCode.toDataURL(text, {
-      width: 400,
-      margin: 2,
-      errorCorrectionLevel: 'H', // Highest error correction level
+      width: 800,  // Larger size
+      margin: 6,     // Increased margin
+      errorCorrectionLevel: 'H',
       color: {
-        dark: '#000000',  // QR code color
-        light: '#ffffff'  // Background color
+        dark: '#000000FF', // Solid black with full opacity
+        light: '#FFFFFFFF' // Solid white with full opacity
       },
       rendererOpts: {
-        quality: 1
+        quality: 1 // Maximum quality
       }
     });
     

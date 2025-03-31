@@ -33,6 +33,8 @@ const db = initializeFirestore(app, {
 
 export const messagesCollection = collection(db, 'messages');
 export const eventsCollection = collection(db, 'events');
+export const conversationsCollection = collection(db, 'conversations');
+export const usersCollection = collection(db, 'users');
 
 export const functions = getFunctions(app);
 

@@ -1,0 +1,21 @@
+{
+  "rules": {
+    "conversations": {
+      "$conversationId": {
+        // Allow read/write if the user is a participant in the conversation
+        ".read": "auth != null && resource.data.participants[auth.uid] == true",
+        ".write": "auth != null && (resource.data.participants[auth.uid] == true || !resource.data.exists())"
+      }
+    },
+    "messages": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "users": {
+      ".read": "auth != null",
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId"
+      }
+    }
+  }
+} 

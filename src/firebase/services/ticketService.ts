@@ -84,15 +84,18 @@ export const ticketService = {
   },
 
   async getTicket(ticketId: string): Promise<Ticket | null> {
+    console.log('Fetching ticket:', ticketId);
     try {
-      const ticketDoc = await getDoc(doc(db, 'tickets', ticketId));
-      if (!ticketDoc.exists()) {
+      const doc = await getDoc(doc(db, 'tickets', ticketId));
+      if (!doc.exists) {
+        console.warn('Ticket not found:', ticketId);
         return null;
       }
-      const data = ticketDoc.data();
-      return this.transformTicketData(ticketId, data);
+      console.log('Ticket data:', doc.data());
+      return this.transformTicketData(doc.id, doc.data());
     } catch (error) {
-      throw new Error('Failed to fetch ticket');
+      console.error('Ticket fetch error:', error);
+      throw new Error('Failed to retrieve ticket');
     }
   },
 
@@ -111,95 +114,58 @@ export const ticketService = {
     }
   },
 
-  async validateTicket(ticketId: string, validationCount: number = 1): Promise<ValidationResult> {
-    try {
-      if (!ticketId) {
-        throw new Error('Ticket ID is required');
-      }
-
-      if (validationCount < 1) {
-        throw new Error('Validation count must be at least 1');
-      }
-
+  async validateTicket(ticketId: string): Promise<ValidationResult> {
+    return runTransaction(db, async (transaction) => {
       const ticketRef = doc(db, 'tickets', ticketId);
+      const ticketDoc = await transaction.get(ticketRef);
       
-      return await runTransaction(db, async (transaction) => {
-        const ticketDoc = await transaction.get(ticketRef);
-        
-        if (!ticketDoc.exists()) {
-          throw new Error('Ticket not found');
-        }
+      if (!ticketDoc.exists()) {
+        throw new Error('Ticket not found');
+      }
+      
+      const ticket = this.transformTicketData(ticketDoc.id, ticketDoc.data());
+      
+      // Validate ticket state
+      if (ticket.status !== 'valid') {
+        throw new Error('Ticket is no longer valid');
+      }
+      
+      if (ticket.validationsRemaining <= 0) {
+        throw new Error('No validations remaining');
+      }
 
-        const data = ticketDoc.data();
-        
-        // Ensure all required fields exist
-        if (!data.quantity || typeof data.usedCount === 'undefined') {
-          throw new Error('Invalid ticket data');
-        }
+      // Calculate new values
+      const newValidationsRemaining = ticket.validationsRemaining - 1;
+      const newUsedCount = ticket.usedCount + 1;
+      const newStatus = newValidationsRemaining === 0 ? 'used' : 'valid';
 
-        // Calculate validations remaining
-        const validationsRemaining = data.validationsRemaining ?? (data.quantity - (data.usedCount || 0));
-        const usedCount = data.usedCount || 0;
+      // Create validation record
+      const validationRecord = {
+        timestamp: new Date().toISOString(),
+        validatedBy: auth.currentUser?.uid || 'system',
+        validatedByEmail: auth.currentUser?.email || 'system'
+      };
 
-        // Validate ticket status and remaining count
-        if (data.status !== 'valid') {
-          throw new Error('Ticket is no longer valid');
-        }
+      // Prepare update
+      const updateData = {
+        validationsRemaining: newValidationsRemaining,
+        usedCount: newUsedCount,
+        status: newStatus,
+        lastValidatedAt: serverTimestamp(),
+        validations: [...ticket.validations, validationRecord]
+      };
 
-        if (validationsRemaining <= 0) {
-          throw new Error('No validations remaining');
-        }
+      // Perform update
+      transaction.update(ticketRef, updateData);
 
-        if (validationCount > validationsRemaining) {
-          throw new Error(`Cannot validate ${validationCount} tickets. Only ${validationsRemaining} remaining.`);
-        }
-
-        // Calculate new values
-        const newUsedCount = usedCount + validationCount;
-        const newValidationsRemaining = validationsRemaining - validationCount;
-        const newStatus = newValidationsRemaining === 0 ? 'used' : 'valid';
-
-        // Create validation record with current timestamp and user email
-        const now = new Date();
-        const validationRecord = {
-          timestamp: now.toISOString(),
-          count: validationCount,
-          validatedBy: auth.currentUser?.uid || 'system',
-          validatedByEmail: auth.currentUser?.email || 'system'
-        };
-
-        // Prepare update data
-        const updateData = {
-          usedCount: newUsedCount,
-          validationsRemaining: newValidationsRemaining,
-          status: newStatus,
-          lastValidatedAt: serverTimestamp(),
-          validations: [...(data.validations || []), validationRecord],
-          validationSummary: {
-            total: data.quantity,
-            used: newUsedCount,
-            remaining: newValidationsRemaining,
-            lastUpdated: now.toISOString(),
-            lastBatchValidation: validationRecord
-          }
-        };
-
-        // Update ticket document
-        transaction.update(ticketRef, updateData);
-
-        // Return validation result
-        return {
-          success: true,
-          message: `Successfully validated ${validationCount} ticket${validationCount > 1 ? 's' : ''}`,
-          validationsRemaining: newValidationsRemaining,
-          usedCount: newUsedCount,
-          status: newStatus
-        };
-      });
-    } catch (error: any) {
-      console.error('Error validating ticket:', error);
-      throw new Error(error.message || 'Failed to validate ticket');
-    }
+      return {
+        success: true,
+        message: 'Validation successful',
+        validationsRemaining: newValidationsRemaining,
+        usedCount: newUsedCount,
+        status: newStatus
+      };
+    });
   },
 
   async getValidationHistory(ticketId: string): Promise<Ticket['validations']> {
@@ -272,5 +238,26 @@ export const ticketService = {
     };
 
     return transformedTicket;
+  },
+
+  async generateTicketQR(ticket: Ticket): Promise<string> {
+    try {
+      // Simplify to minimal data structure for scanning reliability
+      const qrData = JSON.stringify({
+        t: ticket.id,
+        v: ticket.verificationCode,
+        ts: Date.now()
+      });
+      
+      console.log('Generating QR with data:', qrData);
+      const qrCode = await generateQR(qrData);
+      
+      if (!qrCode) throw new Error('QR generation failed');
+      await updateDoc(doc(db, 'tickets', ticket.id), { qrCode });
+      return qrCode;
+    } catch (error) {
+      console.error('Error generating QR:', error);
+      throw error;
+    }
   }
 };

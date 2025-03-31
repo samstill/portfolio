@@ -11,69 +11,76 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Events collection rules
-    match /events/{eventId} {
-      allow read: if true;
-      allow create, delete: if isAdmin();
-      
-      // Allow ticket booking updates
-      allow update: if isAuthenticated() && (
-        isAdmin() || (
-          // Only check the fields being updated
-          request.resource.data.availableTickets >= 0 &&
-          request.resource.data.soldTickets >= 0 &&
-          // Ensure other fields remain unchanged
-          request.resource.data.title == resource.data.title &&
-          request.resource.data.description == resource.data.description &&
-          request.resource.data.date == resource.data.date &&
-          request.resource.data.location == resource.data.location &&
-          request.resource.data.price == resource.data.price &&
-          request.resource.data.totalTickets == resource.data.totalTickets
-        )
+    // Helper function to check if user is part of a conversation
+    function isConversationParticipant(conversationData) {
+      return isAuthenticated() && (
+        conversationData.participantIds.hasAny([request.auth.uid]) ||
+        conversationData.createdBy == request.auth.uid ||
+        isAdmin()
       );
-    }
-
-    // Tickets collection rules - Simplified
-    match /tickets/{ticketId} {
-      allow create: if isAuthenticated();  // Any authenticated user can create tickets
-      allow read: if isAuthenticated();    // Any authenticated user can read tickets
-      allow update, delete: if isAdmin();  // Only admin can modify or delete tickets
-    }
-
-    // Transactions collection rules - Simplified
-    match /transactions/{transactionId} {
-      allow create: if isAuthenticated();  // Any authenticated user can create transactions
-      allow read: if isAuthenticated();    // Any authenticated user can read transactions
-      allow update, delete: if isAdmin();  // Only admin can modify or delete transactions
-    }
-
-    // Failed transactions collection rules - Simplified
-    match /failed_transactions/{transactionId} {
-      allow create: if isAuthenticated();  // Any authenticated user can create failed transactions
-      allow read: if isAuthenticated();    // Any authenticated user can read failed transactions
-      allow update, delete: if isAdmin();  // Only admin can modify or delete failed transactions
     }
 
     // Users collection rules
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (
-        request.auth.uid == userId || isAdmin()
+      allow update: if isAuthenticated() && 
+        (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Conversations collection rules
+    match /conversations/{conversationId} {
+      // Allow listing conversations where user is a participant
+      allow list: if isAuthenticated();
+      
+      // Allow reading specific conversation if user is a participant
+      allow get: if isAuthenticated();
+
+      // Allow creating new conversations
+      allow create: if isAuthenticated() && (
+        // Ensure the current user is included in participants
+        request.resource.data.participants[request.auth.uid] == true &&
+        // Ensure the current user is included in participantIds
+        request.resource.data.participantIds.hasAny([request.auth.uid]) &&
+        // Ensure there's at least one other participant
+        request.resource.data.participantIds.size() >= 2 &&
+        // Ensure createdBy matches the current user
+        request.resource.data.createdBy == request.auth.uid
       );
+
+      // Allow updating conversations user is part of
+      allow update: if isAuthenticated();
+
       allow delete: if isAdmin();
     }
 
     // Messages collection rules
     match /messages/{messageId} {
-      allow create: if true;
-      allow read: if isAuthenticated();
-      allow update, delete: if isAdmin();
+      // Allow listing messages from conversations user is part of
+      allow list: if isAuthenticated();
+      
+      // Allow reading specific message if user is part of the conversation
+      allow get: if isAuthenticated();
+
+      // Allow creating messages in conversations user is part of
+      allow create: if isAuthenticated() && (
+        // Ensure sender ID matches current user
+        request.resource.data.senderId == request.auth.uid
+      );
+
+      // Allow updating own messages
+      allow update: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
     }
 
-    // Settings collection rules
-    match /settings/ai {
-      allow read, write: if isAuthenticated();
+    // User Settings collection rules
+    match /userSettings/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
 
     // Catch-all rule for other collections

@@ -102,16 +102,35 @@ export const userService = {
   },
 
   // Get all users (admin only)
-  async getAllUsers(): Promise<UserData[]> {
+  async getAllUsers(searchQuery?: string): Promise<UserData[]> {
     try {
       const usersRef = collection(db, 'users');
       const q = query(usersRef);
       const querySnapshot = await getDocs(q);
       
-      return querySnapshot.docs.map(doc => ({
+      let users = querySnapshot.docs.map(doc => ({
         ...doc.data(),
         uid: doc.id
       })) as UserData[];
+
+      // If search query is provided, filter users
+      if (searchQuery) {
+        const searchLower = searchQuery.toLowerCase().trim();
+        users = users.filter(user => {
+          const email = user.email?.toLowerCase() || '';
+          const uid = user.uid?.toLowerCase() || '';
+          const role = user.role?.toLowerCase() || '';
+          
+          return (
+            email.includes(searchLower) ||
+            uid.includes(searchLower) ||
+            role.includes(searchLower)
+          );
+        });
+      }
+
+      // Sort users by email
+      return users.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
     } catch (error) {
       console.error('Error getting all users:', error);
       throw new Error('Failed to get users');
