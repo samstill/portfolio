@@ -95,6 +95,16 @@ const QRScanner: React.FC<QRScannerProps> = ({
   const lastScanTime = useRef<number>(0);
   const [cameraError, setCameraError] = useState(false);
   const scanDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const onScanRef = useRef(onScan);
+  const onErrorRef = useRef(onError);
+  const onLoadRef = useRef(onLoad);
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+    onErrorRef.current = onError;
+    onLoadRef.current = onLoad;
+  }, [onScan, onError, onLoad]);
 
   const cleanup = async () => {
     if (cleanupInProgress.current) return;
@@ -167,7 +177,7 @@ const QRScanner: React.FC<QRScannerProps> = ({
     if (isVideoReady) {
       console.log('Video is ready');
       setIsInitializing(false);
-      if (onLoad) onLoad();
+      if (onLoadRef.current) onLoadRef.current();
       
       // Ensure video is visible
       requestAnimationFrame(() => {
@@ -271,7 +281,7 @@ const QRScanner: React.FC<QRScannerProps> = ({
               scanDebounceRef.current = null;
             }, 500); // 500ms debounce window
 
-            onScan(decodedText);
+            onScanRef.current(decodedText);
           },
           (errorMessage) => {
             const suppressedErrors = [
@@ -282,8 +292,8 @@ const QRScanner: React.FC<QRScannerProps> = ({
             
             if (!suppressedErrors.some(e => errorMessage.includes(e))) {
               console.debug('Scanner error:', errorMessage);
-              if (isMounted.current && onError) {
-                onError(errorMessage);
+              if (isMounted.current && onErrorRef.current) {
+                onErrorRef.current(errorMessage);
               }
             }
           }
@@ -306,7 +316,7 @@ const QRScanner: React.FC<QRScannerProps> = ({
             }
             if (isMounted.current) {
               setIsInitializing(false);
-              if (onError) onError('Video failed to initialize in time');
+              if (onErrorRef.current) onErrorRef.current('Video failed to initialize in time');
             }
           }
           retries++;
@@ -316,8 +326,8 @@ const QRScanner: React.FC<QRScannerProps> = ({
         console.error('Scanner initialization error:', error);
         if (isMounted.current) {
           setIsInitializing(false);
-          if (onError) {
-            onError(error instanceof Error ? error.message : 'Failed to initialize scanner');
+          if (onErrorRef.current) {
+            onErrorRef.current(error instanceof Error ? error.message : 'Failed to initialize scanner');
           }
         }
       }
@@ -334,7 +344,7 @@ const QRScanner: React.FC<QRScannerProps> = ({
       }
       cleanup();
     };
-  }, [scannerDivId, facingMode, constraints, onScan, onError, onLoad, isOpen]);
+  }, [scannerDivId, facingMode, constraints, isOpen]);
 
   if (!isOpen) {
     return null;
