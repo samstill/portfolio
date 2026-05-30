@@ -19,7 +19,7 @@ const AboutUsScreen: React.FC = () => {
               Our Mission
             </Typography>
             <Typography paragraph>
-            I’m Harshit Padha, a software engineer passionate about building innovative solutions that make real connections happen. I founded harshitpadha.me to create a seamless way for people to access professionals like me—through event-based ticketing. Whether you’re looking for guidance, collaboration, or meaningful conversations, this platform ensures you can connect with the right expert at the right time. My goal is simple: to break down barriers and make professional access effortless, engaging, and valuable..
+            I’m Harshit Padha, a software engineer passionate about building innovative solutions that make real connections happen. I founded events.similaen.com to create a seamless way for people to access professionals like me—through event-based ticketing. Whether you’re looking for guidance, collaboration, or meaningful conversations, this platform ensures you can connect with the right expert at the right time. My goal is simple: to break down barriers and make professional access effortless, engaging, and valuable..
             </Typography>
 
             <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 3 }}>

@@ -40,6 +40,6 @@ jobs:
         with:
           folder: dist
           branch: gh-pages
-          cname: harshitpadha.me
+          cname: events.similaen.com
           clean: true
           single-commit: true

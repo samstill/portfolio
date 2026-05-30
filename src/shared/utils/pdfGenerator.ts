@@ -31,7 +31,7 @@ const createTicketPDF = async (ticket: Ticket): Promise<Blob> => {
           color: #1a1a1a;
           margin-bottom: 5px;
         ">E-TICKET</div>
-        <div style="color: #666; font-size: 14px;">harshitpadha.me</div>
+        <div style="color: #666; font-size: 14px;">events.similaen.com</div>
       </div>
 
       <!-- Event Title -->
@@ -178,7 +178,7 @@ const createTicketPDF = async (ticket: Ticket): Promise<Blob> => {
         <div style="margin-bottom: 5px;">Generated on ${new Date().toLocaleString()}</div>
         <div>This is an electronically generated document. No signature required.</div>
         <div style="margin-top: 10px;">
-          For support: support@harshitpadha.me | www.harshitpadha.me
+          For support: support@similaen.com | events.similaen.com
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@
   "name": "portfolio",
   "private": true,
   "version": "0.0.0",
-  "homepage": "https://harshitpadha.me",
+  "homepage": "https://events.similaen.com",
   "type": "module",
   "scripts": {
     "dev": "vite",
