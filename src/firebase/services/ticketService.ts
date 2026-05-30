@@ -42,21 +42,11 @@ export const ticketService = {
       // Create the ticket document
       const ticketRef = await addDoc(collection(db, 'tickets'), initialTicketData);
       
-      // Generate QR code with ticket details
+      // Generate QR code with simplified ticket details for scanning reliability
       const qrCodeData = {
-        ticketId: ticketRef.id,
-        eventId: ticketData.eventId,
-        eventDetails: {
-          title: ticketData.eventDetails.title,
-          date: ticketData.eventDetails.date,
-          location: ticketData.eventDetails.location
-        },
-        ticketNumber: ticketData.ticketNumber,
-        quantity: ticketData.quantity,
-        validationsRemaining: ticketData.quantity,
-        verificationCode: ticketData.verificationCode,
-        purchasedAt: initialTicketData.purchasedAt,
-        status: 'valid'
+        t: ticketRef.id,
+        v: ticketData.verificationCode,
+        ts: Date.now()
       };
       
       // Generate and verify QR code
@@ -114,7 +104,7 @@ export const ticketService = {
     }
   },
 
-  async validateTicket(ticketId: string): Promise<ValidationResult> {
+  async validateTicket(ticketId: string, count: number = 1): Promise<ValidationResult> {
     return runTransaction(db, async (transaction) => {
       const ticketRef = doc(db, 'tickets', ticketId);
       const ticketDoc = await transaction.get(ticketRef);
@@ -125,36 +115,37 @@ export const ticketService = {
       
       const ticket = this.transformTicketData(ticketDoc.id, ticketDoc.data());
       
-      // Validate ticket state
-      if (ticket.status !== 'valid') {
+      // Validate ticket state (allow partially_used)
+      if (ticket.status !== 'valid' && ticket.status !== 'partially_used') {
         throw new Error('Ticket is no longer valid');
       }
       
-      if (ticket.validationsRemaining <= 0) {
-        throw new Error('No validations remaining');
+      if (ticket.validationsRemaining < count) {
+        throw new Error(`Only ${ticket.validationsRemaining} validations remaining`);
       }
-
+      
       // Calculate new values
-      const newValidationsRemaining = ticket.validationsRemaining - 1;
-      const newUsedCount = ticket.usedCount + 1;
-      const newStatus = newValidationsRemaining === 0 ? 'used' : 'valid';
-
+      const newValidationsRemaining = ticket.validationsRemaining - count;
+      const newUsedCount = ticket.usedCount + count;
+      const newStatus = newValidationsRemaining === 0 ? 'used' : 'partially_used';
+      
       // Create validation record
       const validationRecord = {
         timestamp: new Date().toISOString(),
         validatedBy: auth.currentUser?.uid || 'system',
-        validatedByEmail: auth.currentUser?.email || 'system'
+        validatedByEmail: auth.currentUser?.email || 'system',
+        count: count
       };
-
+      
       // Prepare update
       const updateData = {
         validationsRemaining: newValidationsRemaining,
         usedCount: newUsedCount,
         status: newStatus,
         lastValidatedAt: serverTimestamp(),
-        validations: [...ticket.validations, validationRecord]
+        validations: [...(ticket.validations || []), validationRecord]
       };
-
+      
       // Perform update
       transaction.update(ticketRef, updateData);
 

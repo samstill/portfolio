@@ -251,6 +251,38 @@ const ScannerMessage = styled.div`
   }
 `;
 
+const Overlay = styled(motion.div)<{ $type: 'success' | 'error' | 'processing' }>`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: ${props => 
+    props.$type === 'success' ? 'rgba(46, 213, 115, 0.95)' : 
+    props.$type === 'error' ? 'rgba(255, 71, 87, 0.95)' : 
+    'rgba(0, 0, 0, 0.85)'};
+  color: white;
+  z-index: 100;
+  padding: 20px;
+  text-align: center;
+  backdrop-filter: blur(5px);
+`;
+
+const AnimCircle = styled(motion.div)`
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 4px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+`;
+
 interface QRScannerSectionProps {
   onTicketFound: (ticket: Ticket) => void;
 }
@@ -263,6 +295,9 @@ const QRScannerSection: React.FC<QRScannerSectionProps> = ({ onTicketFound }) =>
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [availableCameras, setAvailableCameras] = useState<Array<{ id: string; label: string }>>([]);
   const isTogglingCamera = useRef(false);
+  const [scanStatus, setScanStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+  const [scanMessage, setScanMessage] = useState('');
+  const [scannedTicketInfo, setScannedTicketInfo] = useState<{ title: string; ticketNumber: string; remaining: number } | null>(null);
 
   const getCameraDevices = useCallback(async () => {
     try {
@@ -413,27 +448,26 @@ const QRScannerSection: React.FC<QRScannerSectionProps> = ({ onTicketFound }) =>
   }, [availableCameras, selectedDeviceId, handleStopScanning]);
 
   const handleScan = useCallback(async (data: string | null) => {
-    if (!data) {
-      console.log('No QR code data received');
+    if (!data || scanStatus !== 'idle') {
       return;
     }
 
     try {
+      setScanStatus('processing');
       console.log('Processing QR code data:', data);
       let ticketId: string;
+      let qrData: any = null;
 
       // Try to parse as JSON first
       try {
-        const qrData = JSON.parse(data);
+        qrData = JSON.parse(data);
         console.log('Successfully parsed QR data as JSON:', qrData);
         
-        // Check for different possible ticket ID fields
-        ticketId = qrData.ticketId || qrData.id || qrData.ticket;
+        // Check for different possible ticket ID fields (including 't' optimized key)
+        ticketId = qrData.t || qrData.ticketId || qrData.id || qrData.ticket;
         
         if (!ticketId) {
-          console.warn('Invalid QR code format - missing ticket identifier:', qrData);
-          toast.error('Invalid ticket QR code format');
-          return;
+          throw new Error('Invalid QR code format - missing ticket identifier');
         }
         console.log('Extracted ticketId from JSON:', ticketId);
       } catch (e) {
@@ -444,100 +478,86 @@ const QRScannerSection: React.FC<QRScannerSectionProps> = ({ onTicketFound }) =>
 
       // Validate ticket ID format
       if (!ticketId || ticketId.length < 1) {
-        console.warn('Invalid ticket ID format:', ticketId);
-        toast.error('Invalid ticket format');
-        return;
+        throw new Error('Invalid ticket identifier format');
       }
 
       console.log('Attempting to fetch ticket with ID:', ticketId);
       const ticket = await ticketService.getTicket(ticketId);
       
       if (!ticket) {
-        console.warn('No ticket found with ID:', ticketId);
-        toast.error('Ticket not found');
-        return;
+        throw new Error('Ticket not found in database');
       }
 
-      console.log('Retrieved ticket details:', {
-        id: ticket.id,
-        status: ticket.status,
-        validationsRemaining: ticket.validationsRemaining,
-        usedCount: ticket.usedCount,
-        eventDetails: ticket.eventDetails
-      });
+      // Verification code validation (if available in QR)
+      if (qrData && qrData.v && ticket.verificationCode !== qrData.v) {
+        throw new Error('Security verification code mismatch');
+      }
 
       // Comprehensive ticket validation
       if (!ticket.eventDetails || !ticket.eventDetails.title) {
-        console.warn('Invalid ticket data - missing event details:', ticket);
-        toast.error('Invalid ticket data');
-        return;
+        throw new Error('Invalid ticket data - missing event details');
       }
 
       if (ticket.status === 'used' || ticket.validationsRemaining <= 0) {
-        console.warn('Ticket already used:', {
-          id: ticketId,
-          usedCount: ticket.usedCount,
-          validationsRemaining: ticket.validationsRemaining,
-          status: ticket.status
-        });
-        toast.error(`Ticket has already been used (${ticket.usedCount}/${ticket.quantity} times)`, {
-          duration: 3000,
-          icon: '⚠️'
-        });
-        return;
+        throw new Error(`Ticket already used (${ticket.usedCount}/${ticket.quantity} times)`);
       }
 
       if (ticket.status === 'cancelled') {
-        console.warn('Ticket is cancelled:', {
-          id: ticketId,
-          cancelledAt: ticket.lastValidatedAt
-        });
-        toast.error('This ticket has been cancelled', {
-          duration: 3000,
-          icon: '❌'
-        });
-        return;
+        throw new Error('This ticket has been cancelled');
       }
 
-      // Valid ticket found
-      console.log('Valid ticket found, proceeding with validation:', {
-        id: ticket.id,
-        status: ticket.status,
-        validationsRemaining: ticket.validationsRemaining,
-        eventTitle: ticket.eventDetails.title
-      });
-
-      // Stop scanner and notify parent
-      console.log('Closing scanner and notifying parent component');
-      await handleStopScanning();
+      // Auto-validate ticket (1 validation)
+      console.log('Auto-validating ticket...', ticket.id);
+      const validationResult = await ticketService.validateTicket(ticket.id, 1);
       
+      if (!validationResult.success) {
+        throw new Error(validationResult.message || 'Validation transaction failed');
+      }
+
+      // Set success state
+      setScannedTicketInfo({
+        title: ticket.eventDetails.title,
+        ticketNumber: ticket.ticketNumber,
+        remaining: validationResult.validationsRemaining
+      });
+      setScanStatus('success');
+      setScanMessage('Validated successfully!');
+
       // Show success message with event details
-      toast.success(`Valid ticket found for "${ticket.eventDetails.title}"!`, {
+      toast.success(`Validated: "${ticket.eventDetails.title}"!`, {
         duration: 3000,
         icon: '✅'
       });
 
-      // Notify parent component with the valid ticket
-      onTicketFound(ticket);
+      // Notify parent component with the updated ticket
+      const updatedTicket = {
+        ...ticket,
+        validationsRemaining: validationResult.validationsRemaining,
+        usedCount: validationResult.usedCount,
+        status: validationResult.status
+      };
+      onTicketFound(updatedTicket);
 
-    } catch (error) {
+      // Cooldown for 3 seconds before resuming scans
+      setTimeout(() => {
+        setScanStatus('idle');
+        setScannedTicketInfo(null);
+      }, 3000);
+
+    } catch (error: any) {
       console.error('QR Code Processing Error:', error);
-      console.error('Error details:', {
-        originalData: data,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+      setScanStatus('error');
       
-      // Show appropriate error message
-      const errorMessage = error instanceof Error ? error.message : 'Invalid QR code';
-      toast.error(errorMessage, {
-        duration: 3000,
-        icon: '❌'
-      });
-      
-      // Restart scanner after error
-      setIsScannerOpen(true);
+      const errMsg = error instanceof Error ? error.message : 'Invalid QR code';
+      setScanMessage(errMsg);
+      toast.error(errMsg, { duration: 3000 });
+
+      // Cooldown for 3 seconds before resuming scans
+      setTimeout(() => {
+        setScanStatus('idle');
+      }, 3000);
     }
-  }, [onTicketFound, handleStopScanning]);
+  }, [onTicketFound, scanStatus]);
 
   const handleError = useCallback((error: string) => {
     if (!error.includes('No QR code found')) {
@@ -646,6 +666,97 @@ const QRScannerSection: React.FC<QRScannerSectionProps> = ({ onTicketFound }) =>
                   <FiRefreshCw size={20} />
                 </CameraFlipButton>
               )}
+
+              {/* Validation Success/Failure/Processing overlay */}
+              <AnimatePresence>
+                {(scanStatus === 'success' || scanStatus === 'error' || scanStatus === 'processing') && (
+                  <Overlay
+                    $type={scanStatus}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    {scanStatus === 'processing' && (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+                          style={{ marginBottom: 20 }}
+                        >
+                          <FiLoader size={48} />
+                        </motion.div>
+                        <h3>Validating Ticket...</h3>
+                      </>
+                    )}
+                    {scanStatus === 'success' && (
+                      <>
+                        <AnimCircle
+                          initial={{ scale: 0.5, rotate: -45 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                        >
+                          <svg viewBox="0 0 50 50" width="50" height="50">
+                            <motion.path
+                              d="M14,27 L22,35 L36,17"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth="5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              initial={{ pathLength: 0 }}
+                              animate={{ pathLength: 1 }}
+                              transition={{ duration: 0.4, delay: 0.1 }}
+                            />
+                          </svg>
+                        </AnimCircle>
+                        <h2>Valid Ticket</h2>
+                        {scannedTicketInfo && (
+                          <div style={{ marginTop: 15, fontSize: '0.95rem', opacity: 0.95 }}>
+                            <p style={{ fontWeight: 600, fontSize: '1.05rem', marginBottom: 5 }}>{scannedTicketInfo.title}</p>
+                            <p>Ticket: {scannedTicketInfo.ticketNumber}</p>
+                            <p style={{ marginTop: 8, fontWeight: 500 }}>Remaining: {scannedTicketInfo.remaining}</p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {scanStatus === 'error' && (
+                      <>
+                        <AnimCircle
+                          initial={{ scale: 0.5, rotate: 45 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                        >
+                          <svg viewBox="0 0 50 50" width="50" height="50">
+                            <motion.path
+                              d="M15,15 L35,35"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth="5"
+                              strokeLinecap="round"
+                              initial={{ pathLength: 0 }}
+                              animate={{ pathLength: 1 }}
+                              transition={{ duration: 0.3 }}
+                            />
+                            <motion.path
+                              d="M35,15 L15,35"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth="5"
+                              strokeLinecap="round"
+                              initial={{ pathLength: 0 }}
+                              animate={{ pathLength: 1 }}
+                              transition={{ duration: 0.3, delay: 0.15 }}
+                            />
+                          </svg>
+                        </AnimCircle>
+                        <h2>Invalid Ticket</h2>
+                        <p style={{ marginTop: 15, fontSize: '0.95rem', opacity: 0.95 }}>{scanMessage}</p>
+                      </>
+                    )}
+                  </Overlay>
+                )}
+              </AnimatePresence>
             </ScannerContainer>
           </ScannerSection>
         )}
